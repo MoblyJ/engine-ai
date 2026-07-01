@@ -109,26 +109,44 @@ flowchart LR
 ## 🧰 What you get
 
 <table>
-<tr><td>
+<tr><td valign="top">
 
-**Slash commands**
-`/new-app` · `/mobile-check`
-`/deploy-check` · `/ground` · `/ship-live`
+**Slash commands** (6)
+`/new-app` · `/resume-app`
+`/mobile-check` · `/deploy-check`
+`/ground` · `/ship-live`
 
-</td><td>
+**Agents** — in `/agents` (6)
+`engine-orchestrator`
+`engine-app-builder` · `engine-mobile`
+`engine-deployer` · `engine-grounder`
+`engine-memory`
 
-**Skills** (auto-triggered)
+**Skills** — auto-triggered (3)
 `deployable-app` · `mobile-responsive`
 `publish-and-deploy`
 
-</td><td>
+</td><td valign="top">
 
-**MCP tools** (12)
-`scaffold_app` · `deploy_readiness`
-`responsive_audit` · `git_publish`
-`vercel_deploy` · `index_repo`
-`search_repo` · `list/get_skill`
-`set/list_secret` · `import_repo_skills`
+**MCP tools** (22)
+
+🏗️ *Build / ship* — `scaffold_app` ·
+`deploy_readiness` · `responsive_audit` ·
+`git_publish` · `vercel_deploy`
+
+🔎 *Repo / skills* — `index_repo` ·
+`search_repo` · `list_skills` · `get_skill` ·
+`import_repo_skills`
+
+🔐 *Secrets* — `set_secret` · `list_secrets`
+
+🧠 *Memory pockets* — `memory_save` ·
+`memory_recall` · `memory_context` ·
+`memory_list` · `memory_forget`
+
+📦 *App sessions (worktrees)* — `app_create` ·
+`app_update` · `app_list` · `app_resume` ·
+`app_find`
 
 </td></tr>
 </table>
