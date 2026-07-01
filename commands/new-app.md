@@ -16,9 +16,11 @@ Run this as an **isolated, resumable engine-ai session**:
 ### 2. Build there — delegate to the orchestrator
 - Hand off to the **`engine-orchestrator`** agent (Task tool) with the request + the worktree `path` +
   the session `id`. It runs its full **A2A loop** in its own context, with all engine-ai tools/agents:
-  1. `memory_recall`/`memory_context` on the keywords (evolve prior work).
-  2. `engine-grounder` → `engine-app-builder` (`scaffold_app` → implement → tests → `deploy_readiness` 100).
-  3. `engine-mobile` if there's a UI; `engine-deployer` only if the user asks to ship.
+  1. `context_pack` on the keywords (evolve prior work + retrieved domain knowledge).
+  2. **Consult the relevant `domain-<slug>` experts** (e.g. a chat app → `backend` + `security` +
+     `system-design`) for grounded, cited design guidance; fold it into the build brief.
+  3. `engine-grounder` → `engine-app-builder` (`scaffold_app` → implement → tests → `deploy_readiness` 100).
+  4. `engine-mobile` if there's a UI; `engine-deployer` only if the user asks to ship.
 
 ### 3. Save session + memory (so it's resumable)
 - `memory_save(keywords, context, data)` — the evolving memory pocket.

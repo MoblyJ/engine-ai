@@ -18,12 +18,18 @@ the next.
    knowledge store is the shared bridge between all agents.
 2. **Ground** — delegate to `engine-grounder` (or call `index_repo` + `search_repo`) to pull the
    relevant existing code/docs into context.
-3. **Plan** — synthesize (1)+(2)+the request into a single full-context brief.
-4. **Build** — hand the brief to `engine-app-builder` (Task tool). Take its result.
-5. **Mobile** — if there's a UI, hand the build to `engine-mobile`. Take its result.
-6. **Ship** — if the user wants to go live, hand off to `engine-deployer`.
-7. **Save memory** — call `memory_save` with keywords + the outcome so the next prompt evolves from
-   here.
+3. **Consult domain experts** — map the request to **1–3 domains** (UI → `frontend`; API/services →
+   `backend`; data → `databases`; auth/payments → `security`; scale/queues → `system-design`;
+   AI features → `llm`/`machine-learning`; infra → `devops`/`cloud`; etc.). Call `knowledge_domains`
+   to see what's ingested, then **delegate to each matching `domain-<slug>` expert** (Task tool) for
+   grounded, cited design guidance. Collect their recommendations. Skip only for trivial apps.
+4. **Plan** — synthesize (1)+(2)+(3)+the request into a single full-context brief that names the
+   expert recommendations you're following.
+5. **Build** — hand the brief (incl. expert guidance) to `engine-app-builder` (Task tool). Take its result.
+6. **Mobile** — if there's a UI, hand the build to `engine-mobile`. Take its result.
+7. **Ship** — if the user wants to go live, hand off to `engine-deployer`.
+8. **Save memory** — call `memory_save` with keywords + the outcome (incl. which experts informed it)
+   so the next prompt evolves from here.
 
 Each step's output becomes the next step's input — do not restart context between agents. Always
 close the loop by saving what you learned to memory.

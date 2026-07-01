@@ -25,10 +25,11 @@ across prompts. For a frontend/UI app, run the **`mobile-responsive`** skill at 
 run the **`publish-and-deploy`** skill at steps 7–8 (it asks for the repo name and needs `gh auth
 login` / `vercel login`).
 
-### 0. Recall memory (automatic — always first)
-Extract 3–6 **keywords** from the request (domain + tech + product name). Call `memory_context(keywords)`.
-If it returns prior context, **build on it** — reuse the earlier paths, decisions, and structure so the
-app *evolves* instead of starting over. If empty, it's a fresh build.
+### 0. Recall memory + domain knowledge (automatic — always first)
+Extract 3–6 **keywords** from the request (domain + tech + product name). Call `context_pack(keywords)`
+— it returns prior **memory** (evolve earlier paths/decisions instead of starting over) **plus retrieved
+domain knowledge** from the ingested repos. For a domain-heavy build, consult the matching
+`domain-<slug>` expert(s) for cited best-practices. Fold both into the plan.
 
 ### 1. Scaffold
 Pick a kind and call the MCP tool `scaffold_app(path, kind)` with `node-api`, `python-api`, or
