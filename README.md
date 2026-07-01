@@ -80,6 +80,11 @@ claude mcp list        # → engine-ai … ✔ Connected
 > # or run it directly:  npx engine-ai doctor
 > ```
 
+> **New tools / `/agents` / commands not showing after an update?** Claude Code loads them at session
+> start. Run `engine-ai connect` (re-links everything + re-registers the MCP), then **open a new
+> Claude Code session**. Verify with `claude mcp list` (→ `engine-ai … ✔ Connected`) and
+> `engine-ai knowledge status`.
+
 ## 🎮 Use it (inside Claude Code)
 
 | Command | What it does |
@@ -315,6 +320,21 @@ are intentionally out of scope** — this is retrieval, done locally.
 > **agent** → subagent definition · **environment** → git worktree · **session** → app session
 > (`sessions.db`) · **memory store** → memory pockets (the cross-agent bridge) · **context isolation**
 > → each subagent gets explicit `context_pack` input, not the parent conversation.
+
+### `/expert` in action
+
+> **You:** `/expert How should I design a scalable rate limiter for an API?`
+
+`suggest_experts` routes it → **domain-system-design** (1.2k chunks) + **domain-backend** (2.8k). The
+expert grounds its answer in the ingested store and **cites every sourced claim**:
+
+- Enforce volumetric limits at the edge (nginx); per-key/route logic in shared middleware — `nodebestpractices/…/limitrequests.md`
+- Shared **Redis** counters (atomic) + `trust proxy` for the true client IP — same source
+- Cheap check before expensive validation · fail-open on Redis outage · Redis-as-SPOF — `CheatSheetSeries/…/Denial_of_Service_Cheat_Sheet.md`
+- Token-bucket vs sliding-window tradeoffs — answered from first principles, and it **flags** that the
+  store is thin on algorithm internals (and suggests `knowledge_ingest(...)` to fill it).
+
+That's the whole loop: **routed → grounded → cited → honest about gaps.**
 
 ---
 
