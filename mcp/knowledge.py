@@ -63,7 +63,7 @@ class Knowledge:
         self.db.executescript(SCHEMA); self.db.commit()
 
     # ---------------------------------------------------------------- ingest
-    def ingest_path(self, path: str, domain: str, repo: str, max_files=800, max_bytes=300_000, max_chunks=8000) -> dict:
+    def ingest_path(self, path: str, domain: str, repo: str, max_files=1200, max_bytes=1_000_000, max_chunks=8000) -> dict:
         path = os.path.abspath(path)
         if not os.path.isdir(path):
             return {"ok": False, "error": f"not a dir: {path}"}
@@ -80,9 +80,8 @@ class Knowledge:
                     continue
                 full = os.path.join(dp, fn); rel = os.path.relpath(full, path)
                 try:
-                    if os.path.getsize(full) > max_bytes:
-                        continue
-                    txt = open(full, encoding="utf-8", errors="ignore").read()
+                    # truncate-read large files (e.g. a big single README) instead of skipping them
+                    txt = open(full, encoding="utf-8", errors="ignore").read(max_bytes)
                 except OSError:
                     continue
                 for ch in _chunks(txt):

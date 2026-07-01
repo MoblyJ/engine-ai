@@ -46,6 +46,11 @@ CURATED = [
     ("https://github.com/shuaibiyy/awesome-terraform.git", "iac"),
     ("https://github.com/trekhleb/javascript-algorithms.git", "algorithms"),
     ("https://github.com/numetriclabz/awesome-db.git", "databases"),
+    # --- top up the thin domains with beefier, content-dense repos ---
+    ("https://github.com/pingcap/awesome-database-learning.git", "databases"),
+    ("https://github.com/christophM/interpretable-ml-book.git", "deep-learning"),
+    ("https://github.com/donnemartin/awesome-aws.git", "cloud"),
+    ("https://github.com/ramitsurana/awesome-kubernetes.git", "kubernetes"),
 ]
 
 

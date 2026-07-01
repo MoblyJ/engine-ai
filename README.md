@@ -301,7 +301,7 @@ flowchart LR
 **Routing is deterministic** — `suggest_experts(request)` maps a request to the ranked `domain-<slug>`
 experts (and whether each has ingested knowledge), so `/new-app` and `/expert` pick experts repeatably.
 
-**What gets ingested** (curated, practical — **~20k chunks across 23 domains in ~47 MB** from 28 repos):
+**What gets ingested** (curated, practical — **~24k chunks across 23 domains in ~62 MB** from 32 repos):
 system-design-primer/101, awesome-system-design, awesome-ML, Prompt-Engineering-Guide, Awesome-LLM,
 build-your-own-x, AI/ML-For-Beginners, nn-zero-to-hero, developer-roadmap, **nodebestpractices** (backend),
 **Front-End-Checklist / 33-js-concepts** (frontend), **devops-exercises** (devops), **og-aws** (cloud),
