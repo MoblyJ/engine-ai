@@ -125,13 +125,13 @@ flowchart LR
 **experts** (frontend, system-design,
 ml, llm, security, …)
 
-**Skills** — auto-triggered (3)
+**Skills** — auto-triggered (4)
 `deployable-app` · `mobile-responsive`
-`publish-and-deploy`
+`publish-and-deploy` · `expert-answer`
 
 </td><td valign="top">
 
-**MCP tools** (26)
+**MCP tools** (27)
 
 🏗️ *Build / ship* — `scaffold_app` ·
 `deploy_readiness` · `responsive_audit` ·
@@ -153,7 +153,7 @@ ml, llm, security, …)
 
 🎓 *Knowledge swarm* — `knowledge_ingest` ·
 `knowledge_search` · `knowledge_domains` ·
-`context_pack`
+`context_pack` · `suggest_experts`
 
 </td></tr>
 </table>
@@ -187,16 +187,17 @@ flowchart LR
   D --> M1[memory_save + app_update]
 ```
 
-## 📓 Skills — 3 auto-triggered workflows
+## 📓 Skills — 4 auto-triggered workflows
 
 Skills are methodologies Claude adopts **automatically** from your wording (no command needed). Each
 has memory bookends (recall first, save last) so work evolves.
 
 | Skill | What it enforces | Auto-fires when you… |
 |---|---|---|
-| **deployable-app** | recall → scaffold → implement → **test** → readiness 100 → mobile → secrets → publish → deploy → save. "Done" only when tests pass, readiness = 100, and the container answers `/healthz`. | ask to build/create an app, API, or site |
+| **deployable-app** | recall + domain knowledge → scaffold → implement → **test** → readiness 100 → mobile → secrets → publish → deploy → save. "Done" only when tests pass, readiness = 100, and the container answers `/healthz`. | ask to build/create an app, API, or site |
 | **mobile-responsive** | recall → audit → fix (viewport, `@media` 640/768/1024, fluid units, tap targets ≥44px, responsive images) → verify at 390/768px → save | build/review any UI, or say mobile/responsive/phone |
 | **publish-and-deploy** | check tests + readiness → **GitHub** (asks name) → **Vercel** → verify the live URL → save | say push, deploy, go live, or ship |
+| **expert-answer** | `suggest_experts` → `context_pack` / domain expert → **cited** recommendation with tradeoffs → save | ask "how should I design/architect/scale/secure…", best practices, or X vs Y |
 
 ## ⌨️ Commands — 8 slash commands
 
@@ -215,7 +216,7 @@ status across all of them.
 | `/expert <q>` | pick domain(s) → delegate to `domain-<slug>` expert(s) → `context_pack` + `knowledge_search` → cited answer |
 | `/knowledge [q]` | `knowledge_domains` (browse) or `knowledge_search` (find) → cited hits; open source files under `~/.engine-ai/sources/` |
 
-## 🧰 MCP tools — 26 (the agent calls these; you ask in English)
+## 🧰 MCP tools — 27 (the agent calls these; you ask in English)
 
 | Group | Tool | Purpose |
 |---|---|---|
@@ -239,6 +240,7 @@ status across all of them.
 | | `knowledge_search` | BM25 search the ingested knowledge, optionally by domain |
 | | `knowledge_domains` | list ingested domains + chunk/repo counts |
 | | `context_pack` | **the "perfect context"**: prior memory + retrieved domain knowledge in one blob |
+| | `suggest_experts` | deterministic router: request → ranked `domain-<slug>` experts (+ whether each has knowledge) |
 
 ---
 
@@ -296,12 +298,18 @@ flowchart LR
   A --> Ans[grounded answer + citations]
 ```
 
-**What gets ingested** (curated, practical, ~4k chunks in ~9 MB): system-design-primer,
-system-design-101, awesome-system-design-resources, awesome-machine-learning, Prompt-Engineering-Guide,
-Awesome-LLM, build-your-own-x, AI/ML-For-Beginners, nn-zero-to-hero, developer-roadmap. Add your own
-any time: `knowledge_ingest(<repo-url>, "<domain>")`. Translations, images, and giant binaries are
-skipped; **multi-TB corpora (The Stack) and model training are intentionally out of scope** — this is
-retrieval, done locally.
+**Routing is deterministic** — `suggest_experts(request)` maps a request to the ranked `domain-<slug>`
+experts (and whether each has ingested knowledge), so `/new-app` and `/expert` pick experts repeatably.
+
+**What gets ingested** (curated, practical — **~20k chunks across 23 domains in ~47 MB** from 28 repos):
+system-design-primer/101, awesome-system-design, awesome-ML, Prompt-Engineering-Guide, Awesome-LLM,
+build-your-own-x, AI/ML-For-Beginners, nn-zero-to-hero, developer-roadmap, **nodebestpractices** (backend),
+**Front-End-Checklist / 33-js-concepts** (frontend), **devops-exercises** (devops), **og-aws** (cloud),
+**kubernetes-the-hard-way**, **OWASP CheatSheetSeries** (security), **api-guidelines**,
+**javascript-testing-best-practices**, **learning-notes** (architecture), Data-Engineering **Cookbook**,
+**javascript-algorithms**, and more. Add your own any time: `knowledge_ingest(<repo-url>, "<domain>")`.
+Translations, images, and giant binaries are skipped; **multi-TB corpora (The Stack) and model training
+are intentionally out of scope** — this is retrieval, done locally.
 
 > **Design note** — mirrors Anthropic's Managed Agents / Agent SDK patterns, mapped local:
 > **agent** → subagent definition · **environment** → git worktree · **session** → app session
@@ -391,7 +399,7 @@ vercel login        # Vercel
 
 ## 🧪 Verified
 
-Pure-stdlib test suite (`python3 -m unittest discover -s tests`): **41 tests** — MCP protocol (26
+Pure-stdlib test suite (`python3 -m unittest discover -s tests`): **46 tests** — MCP protocol (27
 tools), scaffolding (node/python/static), RAG index+search, secrets vault, mobile-responsive audit,
 GitHub/Vercel auth guards, **memory pockets** (keyword recall + merge-on-similar + evolving context),
 **app sessions** (git worktree per app · 2-line summaries · resume-with-memory · `app_find`),

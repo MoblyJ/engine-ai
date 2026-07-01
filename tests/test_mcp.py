@@ -64,7 +64,8 @@ class TestMCP(unittest.TestCase):
                          "git_publish", "vercel_deploy", "responsive_audit",
                          "memory_save", "memory_recall", "memory_context", "memory_list", "memory_forget",
                          "app_create", "app_update", "app_list", "app_resume", "app_find",
-                         "knowledge_ingest", "knowledge_search", "knowledge_domains", "context_pack"):
+                         "knowledge_ingest", "knowledge_search", "knowledge_domains", "context_pack",
+                         "suggest_experts"):
             self.assertIn(expected, names)
 
     def test_scaffold_then_readiness(self):

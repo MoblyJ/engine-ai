@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from deploy import deploy_readiness, scaffold  # noqa: E402
 from engine import Engine  # noqa: E402
 from integrations import git_publish, responsive_audit, vercel_deploy  # noqa: E402
+import experts as _experts  # noqa: E402
 from knowledge import Knowledge  # noqa: E402
 from memory import Memory  # noqa: E402
 from sessions import Sessions  # noqa: E402
@@ -203,6 +204,12 @@ def _knowledge_domains(a):
       _obj({"keywords": {"type": "array", "items": {"type": "string"}}, "domain": {"type": "string"}}, ["keywords"]))
 def _context_pack(a):
     return {"context": KN.context_pack(a["keywords"], domain=a.get("domain"))}
+
+
+@tool("suggest_experts", "Deterministically route a request to the domain expert(s) to consult (ranked domain-<slug> agents + whether each has ingested knowledge). Use in /new-app and /expert for repeatable routing.",
+      _obj({"request": {"type": "string"}, "k": {"type": "integer"}}, ["request"]))
+def _suggest_experts(a):
+    return _experts.suggest(a["request"], k=int(a.get("k", 3)), knowledge=KN)
 
 
 # ----------------------------------------------------------- JSON-RPC plumbing

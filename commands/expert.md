@@ -5,11 +5,8 @@ description: Ask a domain expert (frontend, backend, system-design, ML, LLM, sec
 Route to the right domain expert for: $ARGUMENTS
 
 ### 1. Pick the domain(s)
-From the request, choose the best domain(s): frontend · backend · fullstack · devops · cloud ·
-kubernetes · containers · system-design · distributed-systems · databases · caching · messaging ·
-networking · security · api-design · microservices · machine-learning · deep-learning · llm ·
-prompt-engineering · ai · data-engineering · mobile · testing · performance · observability · iac ·
-architecture · algorithms · roadmaps. Call `knowledge_domains` to see what's actually ingested.
+Call **`suggest_experts({ request: $ARGUMENTS })`** — it returns the ranked `domain-<slug>` experts to
+use (with whether each has ingested knowledge). Use its top pick(s); override only if clearly wrong.
 
 ### 2. Delegate to the expert subagent
 Invoke the matching **`domain-<slug>`** subagent via the Task tool. It will `context_pack` +

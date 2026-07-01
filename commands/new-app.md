@@ -17,8 +17,8 @@ Run this as an **isolated, resumable engine-ai session**:
 - Hand off to the **`engine-orchestrator`** agent (Task tool) with the request + the worktree `path` +
   the session `id`. It runs its full **A2A loop** in its own context, with all engine-ai tools/agents:
   1. `context_pack` on the keywords (evolve prior work + retrieved domain knowledge).
-  2. **Consult the relevant `domain-<slug>` experts** (e.g. a chat app → `backend` + `security` +
-     `system-design`) for grounded, cited design guidance; fold it into the build brief.
+  2. **`suggest_experts({ request })`** → consult the returned `domain-<slug>` experts (e.g. a chat
+     app → `backend` + `security` + `system-design`) for grounded, cited design guidance; fold into the brief.
   3. `engine-grounder` → `engine-app-builder` (`scaffold_app` → implement → tests → `deploy_readiness` 100).
   4. `engine-mobile` if there's a UI; `engine-deployer` only if the user asks to ship.
 

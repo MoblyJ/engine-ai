@@ -28,6 +28,24 @@ CURATED = [
     ("https://github.com/microsoft/ML-For-Beginners.git", "machine-learning"),
     ("https://github.com/karpathy/nn-zero-to-hero.git", "deep-learning"),
     ("https://github.com/kamranahmedse/developer-roadmap.git", "roadmaps"),
+    # --- coverage for the domains that had experts but thin data ---
+    ("https://github.com/goldbergyoni/nodebestpractices.git", "backend"),
+    ("https://github.com/thedaviddias/Front-End-Checklist.git", "frontend"),
+    ("https://github.com/leonardomso/33-js-concepts.git", "frontend"),
+    ("https://github.com/bregman-arie/devops-exercises.git", "devops"),
+    ("https://github.com/open-guides/og-aws.git", "cloud"),
+    ("https://github.com/kelseyhightower/kubernetes-the-hard-way.git", "kubernetes"),
+    ("https://github.com/OWASP/CheatSheetSeries.git", "security"),
+    ("https://github.com/microsoft/api-guidelines.git", "api-design"),
+    ("https://github.com/goldbergyoni/javascript-testing-best-practices.git", "testing"),
+    ("https://github.com/thedaviddias/Front-End-Performance-Checklist.git", "performance"),
+    ("https://github.com/keyvanakbary/learning-notes.git", "architecture"),
+    ("https://github.com/andkret/Cookbook.git", "data-engineering"),
+    ("https://github.com/dastergon/awesome-sre.git", "observability"),
+    ("https://github.com/mfornos/awesome-microservices.git", "microservices"),
+    ("https://github.com/shuaibiyy/awesome-terraform.git", "iac"),
+    ("https://github.com/trekhleb/javascript-algorithms.git", "algorithms"),
+    ("https://github.com/numetriclabz/awesome-db.git", "databases"),
 ]
 
 
