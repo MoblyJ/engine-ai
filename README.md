@@ -62,6 +62,14 @@ claude mcp list        # → engine-ai … ✔ Connected
 
 ---
 
+> **`engine-ai: command not found`?** The integration still works (skills/commands/tools were wired
+> in) — only the optional helper CLI isn't on your PATH. npm's global bin dir just isn't on PATH on
+> that machine. Fix:
+> ```bash
+> echo 'export PATH="$(npm prefix -g)/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+> # or run it directly:  npx engine-ai doctor
+> ```
+
 ## 🎮 Use it (inside Claude Code)
 
 | Command | What it does |
@@ -149,6 +157,37 @@ trigger, and **MCP tools** the agent calls under the hood.
 | `list_skills` / `get_skill` | browse the workflow library |
 | `import_repo_skills` | ingest more `SKILL.md` skills from any repo |
 | `set_secret` / `list_secrets` | encrypted secrets vault (names-only listing) |
+| `memory_save` / `memory_recall` / `memory_context` | 🧠 **memory pockets** — keyword-tagged evolving context (see below) |
+
+> **These agents also appear in Claude Code's `/agents` menu** — engine-ai installs them as subagents
+> in `~/.claude/agents/` (`engine-orchestrator`, `engine-app-builder`, `engine-mobile`,
+> `engine-deployer`, `engine-grounder`, `engine-memory`).
+
+---
+
+## 🧠 Memory pockets — apps that *evolve* across prompts
+
+Inspired by **[HelixDB](https://github.com/helixdb/helix-db)** (graph + vector AI memory), reduced to a
+tiny Python/SQLite store. Each **pocket** is a chunk of context tagged with **keywords**; recall is
+hybrid (keyword overlap **+** embedding similarity). **If two or more pockets share keywords, engine-ai
+uses the closest ones and merges BOTH their memory and data** — so every new prompt builds on the last
+instead of starting over.
+
+```mermaid
+flowchart LR
+  P["prompt + keywords"] --> R[memory_recall]
+  R -->|2+ share keywords| M[merge closest: memory + data]
+  R -->|else| S[single closest]
+  M --> C[full-context build]
+  S --> C
+  C --> B[engine-app-builder]
+  B --> W[memory_save → evolves the pocket]
+  W -.-> R
+```
+
+The **engine-orchestrator** runs this as an **agent-to-agent (A2A) loop**: recall memory → ground in
+the repo → plan → build → mobile → ship → save memory. Each agent's output feeds the next, so the
+final prompt is assembled in **full context**. Stored at `~/.engine-ai/memory.db`.
 
 ---
 

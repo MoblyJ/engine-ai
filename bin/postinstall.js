@@ -35,4 +35,22 @@ if (status === 0) {
 } else {
   console.log("\n\x1b[33m! auto-connect didn't finish — run  engine-ai connect  to retry.\x1b[0m\n");
 }
+
+// Warn if the npm global bin dir isn't on PATH (why `engine-ai: command not found` happens).
+try {
+  const prefix = (spawnSync("npm", ["prefix", "-g"], { encoding: "utf8" }).stdout || "").trim();
+  const binDir = prefix ? path.join(prefix, "bin") : "";
+  const onPath = binDir && (process.env.PATH || "").split(path.delimiter).includes(binDir);
+  if (binDir && !onPath) {
+    console.log(`\x1b[33m! The 'engine-ai' command may not be found — npm's global bin isn't on your PATH.\x1b[0m
+  The Claude Code integration still works. To enable the 'engine-ai' helper command, add this to ~/.bashrc:
+
+      export PATH="${binDir}:$PATH"
+
+  then:  source ~/.bashrc     (or open a new terminal).
+  You can always run it directly:  node "${path.join(binDir, "engine-ai")}" doctor  —  or:  npx engine-ai doctor
+`);
+  }
+} catch (_) { /* ignore */ }
+
 process.exit(0); // always succeed the install

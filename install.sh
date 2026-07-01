@@ -12,6 +12,7 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 SKILLS_DIR="$CLAUDE_DIR/skills"
 CMDS_DIR="$CLAUDE_DIR/commands"
+AGENTS_DIR="$CLAUDE_DIR/agents"
 SETTINGS="$CLAUDE_DIR/settings.json"
 HOOK="$REPO_DIR/hooks/session-start.sh"
 MCP_NAME="engine-ai"
@@ -110,6 +111,8 @@ do_install() {
   ok "skills linked → $SKILLS_DIR"
   link_dir "$REPO_DIR/commands" "$CMDS_DIR" ".md"
   ok "commands linked → $CMDS_DIR"
+  link_dir "$REPO_DIR/agents" "$AGENTS_DIR" ".md"
+  ok "agents linked → $AGENTS_DIR (shows in Claude Code /agents)"
   chmod +x "$HOOK" "$REPO_DIR/mcp/forge_mcp.py" 2>/dev/null || true
   merge_hook add >/dev/null && ok "SessionStart activation hook installed"
   register_mcp
@@ -139,6 +142,7 @@ do_uninstall() {
   info "uninstalling engine-ai"
   unlink_from "$SKILLS_DIR"; ok "skills unlinked"
   unlink_from "$CMDS_DIR"; ok "commands unlinked"
+  unlink_from "$AGENTS_DIR"; ok "agents unlinked"
   merge_hook remove >/dev/null && ok "activation hook removed"
   claude mcp remove -s user "$MCP_NAME" >/dev/null 2>&1 || claude mcp remove "$MCP_NAME" >/dev/null 2>&1 || true
   ok "MCP server removed"

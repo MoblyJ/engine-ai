@@ -23,9 +23,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from deploy import deploy_readiness, scaffold  # noqa: E402
 from engine import Engine  # noqa: E402
 from integrations import git_publish, responsive_audit, vercel_deploy  # noqa: E402
+from memory import Memory  # noqa: E402
 
 PROTOCOL = "2024-11-05"
 ENGINE = Engine()
+MEM = Memory()
 
 # ----------------------------------------------------------- tool registry
 TOOLS: list[dict] = []
@@ -115,6 +117,35 @@ def _vercel_deploy(a):
       _obj({"path": {"type": "string"}}, ["path"]))
 def _responsive_audit(a):
     return responsive_audit(os.path.abspath(a["path"]))
+
+
+@tool("memory_save", "Save a memory pocket: KEYWORDS defining the context + the context text + optional structured data. If it's similar to an existing pocket it EVOLVES that one (merges keywords+memory+data). Call after building so future prompts build on it.",
+      _obj({"keywords": {"type": "array", "items": {"type": "string"}}, "context": {"type": "string"},
+            "data": {"type": "object"}, "category": {"type": "string"}}, ["keywords", "context"]))
+def _memory_save(a):
+    return MEM.save(a["keywords"], a["context"], a.get("data"), a.get("category"))
+
+
+@tool("memory_recall", "Recall the closest memory pockets by KEYWORDS (hybrid keyword+embedding). If two or more pockets share keywords, returns the closest ones with BOTH memory and data merged — the evolving context to build the next app on.",
+      _obj({"keywords": {"type": "array", "items": {"type": "string"}}, "k": {"type": "integer"}}, ["keywords"]))
+def _memory_recall(a):
+    return MEM.recall(a["keywords"], k=int(a.get("k", 3)))
+
+
+@tool("memory_context", "Return a single ready-to-inject context string built from the closest memory pockets for these keywords — feed it into a build prompt so the app EVOLVES from prior work.",
+      _obj({"keywords": {"type": "array", "items": {"type": "string"}}}, ["keywords"]))
+def _memory_context(a):
+    return {"context": MEM.context(a["keywords"])}
+
+
+@tool("memory_list", "List all memory pockets (keywords, category, hits, preview).", _obj({}))
+def _memory_list(a):
+    return {"pockets": MEM.list()}
+
+
+@tool("memory_forget", "Delete a memory pocket by id.", _obj({"id": {"type": "integer"}}, ["id"]))
+def _memory_forget(a):
+    return MEM.forget(int(a["id"]))
 
 
 # ----------------------------------------------------------- JSON-RPC plumbing
