@@ -16,8 +16,16 @@ verifies at real mobile viewports.
 ## Workflow
 
 ```
-1 AUDIT ──▶ 2 FIX ──▶ 3 VERIFY (mobile viewports) ──▶ 4 RE-AUDIT
+0 RECALL ──▶ 1 AUDIT ──▶ 2 FIX ──▶ 3 VERIFY (mobile viewports) ──▶ 4 RE-AUDIT ──▶ 5 SAVE
+memory                                                                            memory + session
 ```
+**Memory is automatic.** Always start with step 0 and end with step 5 so mobile decisions persist and
+evolve across prompts.
+
+### 0. Recall (automatic — first)
+If working on an app session, call `app_find(cwd)` for its path + keywords. Call
+`memory_context(keywords + ["mobile","responsive"])` — reuse any prior breakpoints / known problem
+areas instead of re-deciding.
 
 ### 1. Audit
 Call the MCP tool `responsive_audit(path)`. It scores the project and reports gaps:
@@ -43,6 +51,11 @@ Render and look — don't assume. Options, best first:
 Run `responsive_audit` again; aim for score ≥ 80 with no findings, plus clean screenshots at
 phone + tablet widths.
 
+### 5. Save (automatic — last)
+`memory_save(keywords + ["mobile"], context = "<what was fixed + final score>", data = {"responsive_score": <n>, "breakpoints": [...]})`.
+If an app session matched in step 0, `app_update(id, summary)` — append e.g. "📱 responsive ✓ score 92"
+so `/resume-app` shows it.
+
 ## Red flags
 - Horizontal scrollbar on a phone width · fixed-px layouts · tap targets < 44px · no viewport meta ·
   text that requires pinch-zoom · images overflowing the screen.
@@ -52,3 +65,4 @@ phone + tablet widths.
 - [ ] No horizontal scroll at 390px (phone) and 768px (tablet)
 - [ ] Tap targets ≥ 44px; text readable without zoom
 - [ ] Screenshots captured at phone + tablet viewports
+- [ ] **Memory recalled at step 0** and **saved at step 5** (+ session updated if in an app session)
