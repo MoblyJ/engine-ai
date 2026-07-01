@@ -16,13 +16,19 @@ documents its env, and has a healthcheck. Use the `engine-ai` MCP tools at each 
 ## Workflow
 
 ```
-1 SCAFFOLD ─▶ 2 IMPLEMENT ─▶ 3 TEST ─▶ 4 READINESS ─▶ 5 MOBILE ─▶ 6 SECRETS ─▶ 7 PUBLISH ─▶ 8 DEPLOY
-  scaffold_app   search_repo   tests   deploy_readiness  responsive_  set_secret  git_publish  vercel_deploy
-                                                          audit        (GitHub)    +live test
+0 RECALL ─▶ 1 SCAFFOLD ─▶ 2 IMPLEMENT ─▶ 3 TEST ─▶ 4 READINESS ─▶ 5 MOBILE ─▶ 6 SECRETS ─▶ 7 PUBLISH ─▶ 8 DEPLOY ─▶ 9 SAVE
+ memory_       scaffold_app   search_repo   tests   deploy_readiness  responsive_  set_secret  git_publish  vercel_deploy   memory_
+ context                                                              audit        (GitHub)    +live test                   save
 ```
-For a frontend/UI app, run the **`mobile-responsive`** skill at step 5. For publishing + going live,
+**Memory is automatic** — always start with step 0 (recall) and end with step 9 (save) so apps evolve
+across prompts. For a frontend/UI app, run the **`mobile-responsive`** skill at step 5. For publishing + going live,
 run the **`publish-and-deploy`** skill at steps 7–8 (it asks for the repo name and needs `gh auth
 login` / `vercel login`).
+
+### 0. Recall memory (automatic — always first)
+Extract 3–6 **keywords** from the request (domain + tech + product name). Call `memory_context(keywords)`.
+If it returns prior context, **build on it** — reuse the earlier paths, decisions, and structure so the
+app *evolves* instead of starting over. If empty, it's a fresh build.
 
 ### 1. Scaffold
 Pick a kind and call the MCP tool `scaffold_app(path, kind)` with `node-api`, `python-api`, or
@@ -59,8 +65,15 @@ to create + push the repo, then `vercel_deploy(...)` for a live URL, and verify 
 If either returns `needs_auth`, show the user the exact login command (`gh auth login` / `vercel
 login`) and stop — never bypass it.
 
+### 9. Save memory (automatic — always last)
+After the build succeeds, call `memory_save(keywords, context, data)` with the same keywords from step
+0, a short summary of what you built + key decisions, and structured `data` to reuse (path, kind,
+endpoints, stack). Similar keywords evolve the existing pocket. The task is not done until steps 0 and
+9 have both run.
+
 ## Red flags
 - Hardcoded secrets, no Dockerfile, no tests, no healthcheck → not deployable.
+- Skipping the memory bookends (step 0 recall / step 9 save) — apps then can't evolve across prompts.
 - "It works on my machine" with no container or CI.
 - Claiming success without running the build or the tests.
 
@@ -70,3 +83,4 @@ login`) and stop — never bypass it.
 - [ ] `docker build` succeeds and the container answers `/healthz`
 - [ ] Required env vars are in `.env.example`; no secrets committed
 - [ ] README documents run + deploy
+- [ ] **Memory recalled at step 0** and **saved at step 9** (so the next related build evolves from this)
