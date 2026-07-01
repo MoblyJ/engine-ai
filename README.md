@@ -153,44 +153,78 @@ flowchart LR
 
 ---
 
-## 🤖 What each agent does
+## 🧑‍🚀 Agents — the 6 subagents (in Claude Code `/agents`)
 
-Engine-ai adds **specialist agents (skills)** that Claude adopts automatically, **slash commands** you
-trigger, and **MCP tools** the agent calls under the hood.
+engine-ai installs six **subagents** into `~/.claude/agents/`. They show up in Claude Code's `/agents`
+menu and are invoked either directly or by the orchestrator as an **agent-to-agent (A2A) loop**. Each
+has its own context and its own tool set (so it can only do its job).
 
-### Agents (skills — auto-triggered by what you ask)
-| Agent | What it does | Fires when you… |
+| Agent | What it does | When it runs | Its tools |
+|---|---|---|---|
+| 🧭 **engine-orchestrator** | The lead. For any "build/ship an app" request it assembles **full context** and delegates the others in order: recall → ground → build → mobile → ship → save. | `/new-app` or any build request | `Task`, R/W/E, Bash, `memory_recall`/`memory_save`, `index_repo`/`search_repo`, `list_skills`/`get_skill` |
+| 🏗️ **engine-app-builder** | Scaffolds, implements, tests, and gates the app to **deploy-readiness 100**. | mid-loop, or "build an app" | `scaffold_app`, `deploy_readiness`, `search_repo`, `set_secret`, `memory_recall` + R/W/E, Bash |
+| 📱 **engine-mobile** | Audits & fixes mobile responsiveness; recalls/saves mobile decisions to the session. | mid-loop, or `/mobile-check` | `responsive_audit`, `memory_context`/`recall`/`save`, `app_find`/`app_update` + R/W/E, Bash |
+| 🚀 **engine-deployer** | Publishes to **GitHub** + deploys to **Vercel**; asks for the repo name; never bypasses auth. | mid-loop, or `/ship-live` | `git_publish`, `vercel_deploy`, `deploy_readiness` + Read, Bash |
+| 🔎 **engine-grounder** | Indexes the repo and returns the relevant code/docs (RAG); saves the grounding to memory. | before edits, or `/ground` | `index_repo`, `search_repo`, `memory_context`/`recall`/`save`, `app_find` + Read, Bash |
+| 🧠 **engine-memory** | Recalls & saves keyword-tagged **memory pockets** so apps evolve across prompts. | any time context matters | `memory_recall`/`context`/`save`/`list`/`forget` |
+
+**The A2A loop** the orchestrator runs (each step's output feeds the next; memory bookends every run):
+```mermaid
+flowchart LR
+  O[engine-orchestrator] --> M0[memory_recall]
+  M0 --> G[engine-grounder]
+  G --> B[engine-app-builder]
+  B --> Mo[engine-mobile]
+  Mo --> D[engine-deployer]
+  D --> M1[memory_save + app_update]
+```
+
+## 📓 Skills — 3 auto-triggered workflows
+
+Skills are methodologies Claude adopts **automatically** from your wording (no command needed). Each
+has memory bookends (recall first, save last) so work evolves.
+
+| Skill | What it enforces | Auto-fires when you… |
 |---|---|---|
-| 🏗️ **deployable-app** | Builds a complete app end-to-end: scaffold → implement → **test** → mobile check → deploy-readiness → ship. Won't call it "done" until tests pass, readiness = 100, and the container answers `/healthz`. | ask to build/create an app, API, service, or site |
-| 📱 **mobile-responsive** | Audits & fixes mobile UX — viewport, breakpoints, fluid layout, tap targets, responsive images — and verifies at phone/tablet widths. | build/review any UI, or mention mobile/responsive/phone |
-| 🚀 **publish-and-deploy** | Takes a tested app → **GitHub repo** (asks you the name) → **Vercel** live URL → verifies the URL responds. | say push to GitHub, deploy, go live, or ship |
+| **deployable-app** | recall → scaffold → implement → **test** → readiness 100 → mobile → secrets → publish → deploy → save. "Done" only when tests pass, readiness = 100, and the container answers `/healthz`. | ask to build/create an app, API, or site |
+| **mobile-responsive** | recall → audit → fix (viewport, `@media` 640/768/1024, fluid units, tap targets ≥44px, responsive images) → verify at 390/768px → save | build/review any UI, or say mobile/responsive/phone |
+| **publish-and-deploy** | check tests + readiness → **GitHub** (asks name) → **Vercel** → verify the live URL → save | say push, deploy, go live, or ship |
 
-### Commands (you type these in Claude Code)
-| Command | Does |
+## ⌨️ Commands — 6 slash commands
+
+Every command shares **one loop**: locate the app session (`app_find`) → **recall** memory → do the
+work → **save** memory + update the session. So an app accumulates its branch + folder + memory +
+status across all of them.
+
+| Command | Flow |
 |---|---|
-| `/new-app <idea>` | scaffold + build a deployable app |
-| `/mobile-check [path]` | audit & fix mobile responsiveness |
-| `/deploy-check [path]` | score deployability + fix gaps |
-| `/ground <task>` | index the repo, work grounded in its real code (RAG) |
-| `/ship-live` | publish to GitHub + deploy to Vercel |
+| `/new-app <idea>` | `app_create` (**git worktree** — own branch + folder) → orchestrator **A2A** build → `memory_save` + `app_update` |
+| `/resume-app` | `app_list` (2-line summaries incl. 📱/🚀 status) → pick → `app_resume` (folder + branch + memory restored) |
+| `/ground <task>` | `app_find` + `memory_context` → `index_repo` + `search_repo` → `memory_save` (`grounded_files`) |
+| `/mobile-check [path]` | `app_find` + `memory_context` → `responsive_audit` → fix → `memory_save` + `app_update` (📱) |
+| `/deploy-check [path]` | `app_find` + `memory_context` → `deploy_readiness` → fix to 100 → `memory_save` + `app_update` (🚀) |
+| `/ship-live` | `app_find` → gate → `git_publish` + `vercel_deploy` → verify → `memory_save` + `app_update` (URLs) |
 
-### Tools (the agent calls these — you just ask in English)
-| Tool | Purpose |
-|---|---|
-| `scaffold_app` | write a deployable skeleton (node-api / python-api / static): server + healthcheck + tests + Dockerfile + CI |
-| `deploy_readiness` | score deployability + list exactly what's missing |
-| `responsive_audit` | static mobile-responsiveness score + findings |
-| `git_publish` | create a GitHub repo and push (uses your `gh` login) |
-| `vercel_deploy` | deploy and return the live URL |
-| `index_repo` / `search_repo` | build + query a repo-aware knowledge index (RAG grounding) |
-| `list_skills` / `get_skill` | browse the workflow library |
-| `import_repo_skills` | ingest more `SKILL.md` skills from any repo |
-| `set_secret` / `list_secrets` | encrypted secrets vault (names-only listing) |
-| `memory_save` / `memory_recall` / `memory_context` | 🧠 **memory pockets** — keyword-tagged evolving context (see below) |
+## 🧰 MCP tools — 22 (the agent calls these; you ask in English)
 
-> **These agents also appear in Claude Code's `/agents` menu** — engine-ai installs them as subagents
-> in `~/.claude/agents/` (`engine-orchestrator`, `engine-app-builder`, `engine-mobile`,
-> `engine-deployer`, `engine-grounder`, `engine-memory`).
+| Group | Tool | Purpose |
+|---|---|---|
+| 🏗️ Build/ship | `scaffold_app` | write a deployable skeleton (node-api / python-api / static): server + `/healthz` + tests + Dockerfile + CI + `.env.example` |
+| | `deploy_readiness` | score deployability + list exactly what's missing |
+| | `responsive_audit` | static mobile-responsiveness score + findings |
+| | `git_publish` | create a GitHub repo and push (uses your `gh` login; returns `needs_auth` if not logged in) |
+| | `vercel_deploy` | deploy and return the live URL (returns `needs_auth` if not logged in) |
+| 🔎 Repo/skills | `index_repo` / `search_repo` | build + query a repo-aware knowledge index (RAG grounding) |
+| | `list_skills` / `get_skill` | browse the workflow library |
+| | `import_repo_skills` | ingest more `SKILL.md` skills from any repo |
+| 🔐 Secrets | `set_secret` / `list_secrets` | encrypted-at-rest secrets vault (lists names only, never values) |
+| 🧠 Memory | `memory_save` | save a keyword-tagged pocket; similar keywords **evolve** the existing one |
+| | `memory_recall` / `memory_context` | hybrid keyword+embedding recall; merges the closest pockets' memory + data |
+| | `memory_list` / `memory_forget` | list / delete pockets |
+| 📦 App sessions | `app_create` | start an app in its own **git worktree** (branch + folder) |
+| | `app_list` / `app_resume` | list sessions (2-line summaries) / reopen one with folder + memory |
+| | `app_update` | save a session's 2-line summary + keywords |
+| | `app_find` | which app session a working dir belongs to (for session-aware commands) |
 
 ---
 
@@ -227,14 +261,59 @@ flowchart TD
   N["npm i -g MoblyJ/engine-ai"] --> P[postinstall auto-connect]
   P -->|claude found| I[install.sh]
   P -->|claude missing| M["clean message → engine-ai connect later"]
-  I --> S1[skills → ~/.claude/skills]
-  I --> S2[commands → ~/.claude/commands]
+  I --> S1[skills → ~/.claude/skills/]
+  I --> S2[commands → ~/.claude/commands/]
+  I --> S5[agents → ~/.claude/agents/]
   I --> S3[SessionStart hook → ~/.claude/settings.json]
   I --> S4["claude mcp add -s user engine-ai"]
   S4 --> R["✔ Connected in every project"]
 ```
 
+### What `connect` / `install.sh` actually does (the actions)
+| Action | Effect | Where |
+|---|---|---|
+| detect | checks WSL + Claude Code (`claude`) + `python3`; clean error + stop if Claude Code is missing | — |
+| link **skills** | symlinks each `skills/<name>/` | `~/.claude/skills/` |
+| link **commands** | symlinks each `commands/*.md` (the 6 slash commands) | `~/.claude/commands/` |
+| link **agents** | symlinks each `agents/*.md` (the 6 subagents → show in `/agents`) | `~/.claude/agents/` |
+| install **hook** | merges a `SessionStart` hook (backs up `settings.json` first) | `~/.claude/settings.json` |
+| register **MCP** | `claude mcp add -s user engine-ai -- python3 …/mcp/forge_mcp.py` (all 22 tools) | user scope |
+
 Everything installs at **user scope**, so it's available in **every folder** you open Claude Code in.
+It's **idempotent** (re-runs are safe) and **fully reversible** (`engine-ai uninstall`).
+
+---
+
+## 🪝 The activation hook (SessionStart)
+
+engine-ai installs one Claude Code hook — `hooks/session-start.sh`, wired into `~/.claude/settings.json`
+as a **SessionStart** hook. On **every new session** it injects a short context block telling Claude the
+toolkit is active and listing the tools, commands, and skills — so Claude reaches for the right one
+without you having to remind it. It's the only hook engine-ai adds, it emits valid JSON (degrades
+gracefully if `jq` is missing, via `python3`), and it's removed on `engine-ai uninstall`.
+
+```
+SessionStart ──▶ session-start.sh ──▶ "engine-ai is ACTIVE — tools: scaffold_app, deploy_readiness,
+                                       responsive_audit, git_publish, vercel_deploy, memory_*, app_* …
+                                       commands: /new-app /resume-app /mobile-check /deploy-check
+                                       /ground /ship-live ; skill: deployable-app"
+```
+
+---
+
+## 🗂️ Where things live (local data)
+
+| Path | What |
+|---|---|
+| `~/.claude/{skills,commands,agents}/` | the symlinked skills / commands / subagents |
+| `~/.claude/settings.json` | the SessionStart hook (with timestamped backups) |
+| `~/.engine-ai/memory.db` | 🧠 memory pockets (keyword-tagged evolving context) |
+| `~/.engine-ai/sessions.db` | 📦 app sessions (name, path, branch, 2-line summary) |
+| `~/.engine-ai/workspace/` | central git repo that app worktrees branch from |
+| `~/.engine-ai/apps/<slug>/` | each app's **git worktree** (own branch + folder) |
+| `~/.engine-ai/forge.db` | repo RAG index |
+
+Nothing is cloud-only — it all runs and persists on your machine.
 
 ---
 
@@ -254,10 +333,11 @@ vercel login        # Vercel
 
 ## 🧪 Verified
 
-Pure-stdlib test suite (`python3 -m unittest discover -s tests`): **19 tests** — MCP protocol,
-scaffolding (node/python/static), RAG index+search, secrets vault, mobile-responsive audit,
-GitHub/Vercel auth guards, and the installer (idempotent · preserves settings · clean uninstall ·
-fails cleanly with no Claude Code).
+Pure-stdlib test suite (`python3 -m unittest discover -s tests`): **35 tests** — MCP protocol (22
+tools), scaffolding (node/python/static), RAG index+search, secrets vault, mobile-responsive audit,
+GitHub/Vercel auth guards, **memory pockets** (keyword recall + merge-on-similar + evolving context),
+**app sessions** (git worktree per app · 2-line summaries · resume-with-memory · `app_find`), and the
+installer (idempotent · preserves settings · clean uninstall · fails cleanly with no Claude Code).
 
 ---
 
