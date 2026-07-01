@@ -76,6 +76,19 @@ class TestSessions(unittest.TestCase):
     def test_resume_missing(self):
         self.assertFalse(self.s.resume("nope-404")["ok"])
 
+    @unittest.skipUnless(HAS_GIT, "git not available")
+    def test_find_by_cwd(self):
+        r = self.s.create("Shop App", keywords=["shop"])
+        # a working dir inside the worktree resolves to the session
+        inner = os.path.join(r["path"], "src")
+        os.makedirs(inner, exist_ok=True)
+        found = self.s.find(inner)
+        self.assertTrue(found["ok"])
+        self.assertEqual(found["id"], r["id"])
+        self.assertEqual(found["branch"], r["branch"])
+        # an unrelated dir is not matched
+        self.assertFalse(self.s.find(tempfile.mkdtemp())["ok"])
+
 
 if __name__ == "__main__":
     unittest.main()

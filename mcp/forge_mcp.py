@@ -174,6 +174,12 @@ def _app_resume(a):
     return SESS.resume(a["key"])
 
 
+@tool("app_find", "Identify which app session a working directory belongs to (its worktree/branch). Use in /ship-live so shipping targets the right app.",
+      _obj({"path": {"type": "string"}}, ["path"]))
+def _app_find(a):
+    return SESS.find(a["path"])
+
+
 # ----------------------------------------------------------- JSON-RPC plumbing
 def _result(id_, result):
     return {"jsonrpc": "2.0", "id": id_, "result": result}

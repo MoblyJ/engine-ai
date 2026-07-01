@@ -89,7 +89,7 @@ claude mcp list        # → engine-ai … ✔ Connected
 | `/mobile-check [path]` | Audit & fix **mobile responsiveness** |
 | `/deploy-check [path]` | Score deployability and fix the gaps |
 | `/ground <task>` | Index the repo and work grounded in its real code (RAG) |
-| `/ship-live` | Push to **GitHub** + deploy to **Vercel**, then verify the live URL |
+| `/ship-live` | **Session-aware** ship: publish the app's worktree/branch to **GitHub** + **Vercel**, verify the URL, record it back to the session |
 
 Or just talk to it: *"build a responsive coffee-shop landing page, then ship it live."*
 

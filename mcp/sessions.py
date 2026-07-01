@@ -129,6 +129,21 @@ class Sessions:
                         "exists": exists, "line1": line1, "line2": line2})
         return out
 
+    def find(self, path: str) -> dict:
+        """Which app session does this working dir belong to? (longest matching worktree path.)"""
+        target = os.path.abspath(path or ".")
+        best = None
+        for r in self.db.execute("SELECT * FROM sessions"):
+            p = r["path"]
+            if target == p or target.startswith(p.rstrip("/") + "/"):
+                if best is None or len(p) > len(best["path"]):
+                    best = r
+        if not best:
+            return {"ok": False, "error": "not inside a known app session", "path": target}
+        return {"ok": True, "id": best["id"], "slug": best["slug"], "name": best["name"],
+                "path": best["path"], "branch": best["branch"], "mode": best["mode"],
+                "keywords": json.loads(best["keywords"]), "summary": best["summary"]}
+
     def resume(self, key) -> dict:
         r = None
         if str(key).isdigit():
