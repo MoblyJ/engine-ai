@@ -47,6 +47,16 @@ npm install -g MoblyJ/engine-ai
 That's it — the installer **auto-detects Claude Code and connects itself**. Then **open a new Claude
 Code session**.
 
+**Or from a git clone (same full feature set):**
+```bash
+git clone https://github.com/MoblyJ/engine-ai.git && cd engine-ai
+npm install        # runs the auto-connect  (or:  ./install.sh)
+```
+
+> **Both paths install every feature locally** — all MCP tools, skills, the `/agents` subagents, the
+> commands, the hook, and the memory engine. Your memory pockets live in `~/.engine-ai/memory.db` and
+> grow as you use it. Nothing is cloud-only; everything runs on your machine.
+
 > **Claude Code not installed?** You'll get a clean message and engine-ai waits:
 > ```
 > ✗ Claude Code was not found on this system.
@@ -74,7 +84,7 @@ claude mcp list        # → engine-ai … ✔ Connected
 
 | Command | What it does |
 |---|---|
-| `/new-app <idea>` | Scaffold + build a **deployable** app end to end |
+| `/new-app <idea>` | Build a **deployable** app in an **isolated session** — own workspace + the orchestrator agent runs the full A2A loop with memory |
 | `/mobile-check [path]` | Audit & fix **mobile responsiveness** |
 | `/deploy-check [path]` | Score deployability and fix the gaps |
 | `/ground <task>` | Index the repo and work grounded in its real code (RAG) |
