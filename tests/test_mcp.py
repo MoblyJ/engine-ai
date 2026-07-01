@@ -62,7 +62,8 @@ class TestMCP(unittest.TestCase):
         for expected in ("scaffold_app", "deploy_readiness", "index_repo", "search_repo",
                          "list_skills", "set_secret", "list_secrets", "import_repo_skills", "get_skill",
                          "git_publish", "vercel_deploy", "responsive_audit",
-                         "memory_save", "memory_recall", "memory_context", "memory_list", "memory_forget"):
+                         "memory_save", "memory_recall", "memory_context", "memory_list", "memory_forget",
+                         "app_create", "app_update", "app_list", "app_resume"):
             self.assertIn(expected, names)
 
     def test_scaffold_then_readiness(self):

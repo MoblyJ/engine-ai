@@ -1,34 +1,32 @@
 ---
-description: Build a new deployable app in an ISOLATED engine-ai session — own workspace, full MCP tools, A2A agents, and automatic evolving memory.
+description: Build a new deployable app in a hard-isolated GIT WORKTREE session — own branch + folder, full MCP tools, A2A agents, and evolving memory. Resumable via /resume-app.
 ---
 
 Build a new deployable application based on: $ARGUMENTS
 
-Run this as an **isolated engine-ai flow** — do not build inline in the current project. Two isolation
-steps, then delegate the whole build to the orchestrator agent:
+Run this as an **isolated, resumable engine-ai session**:
 
-### 1. Isolate the workspace (filesystem)
-- Derive a short **slug** from the request (e.g. "free gaming landing page" → `gaming-landing`).
-- Create a dedicated project folder for it: `./<slug>/` (or `apps/<slug>/` if that dir exists). All
-  scaffolding and edits happen there — never in the toolkit repo or the user's unrelated files.
+### 1. Create the isolated worktree session
+- Pick a short **name** and 3–6 **keywords** from the request.
+- Call the MCP tool `app_create({ name, keywords })`. This creates a **git worktree** — its own branch
+  (`app/<slug>`) and its own folder — and returns the `path`. **All work happens in that `path`**,
+  fully isolated from the current repo and other apps. (If git isn't available it falls back to a
+  standalone repo/folder; the returned `path` is always where you build.)
 
-### 2. Isolate the session (context) — delegate to the orchestrator
-- Hand the request off to the **`engine-orchestrator`** agent via the Task tool, with:
-  - the user's request (`$ARGUMENTS`),
-  - the isolated workspace path from step 1,
-  - instruction to run its full **A2A loop**.
-- The orchestrator runs in its own context and already has the engine-ai MCP tools + coordinates the
-  sub-agents. It will:
-  1. **`memory_recall`/`memory_context`** on keywords from the request (evolve prior work).
-  2. **`engine-grounder`** — index/search if building on existing code.
-  3. **`engine-app-builder`** — `scaffold_app` → implement → tests → `deploy_readiness` (100).
-  4. **`engine-mobile`** — `responsive_audit` if there's a UI.
-  5. **`engine-deployer`** — only if the user asks to publish/deploy (asks for the repo name).
-  6. **`memory_save`** — keywords + what was built + structured data (so the next build evolves).
+### 2. Build there — delegate to the orchestrator
+- Hand off to the **`engine-orchestrator`** agent (Task tool) with the request + the worktree `path` +
+  the session `id`. It runs its full **A2A loop** in its own context, with all engine-ai tools/agents:
+  1. `memory_recall`/`memory_context` on the keywords (evolve prior work).
+  2. `engine-grounder` → `engine-app-builder` (`scaffold_app` → implement → tests → `deploy_readiness` 100).
+  3. `engine-mobile` if there's a UI; `engine-deployer` only if the user asks to ship.
 
-### 3. Report back
-Summarize: the isolated workspace path, what was built, test + readiness results, which agents ran,
-and what memory pocket was recalled/saved.
+### 3. Save session + memory (so it's resumable)
+- `memory_save(keywords, context, data)` — the evolving memory pocket.
+- `app_update({ id, summary, keywords })` — a **2-line summary** of what this app is + its keywords, so
+  it shows nicely in `/resume-app`.
 
-The task is not done until it ran in its own workspace **and** the memory recall (step 2.1) + save
-(step 2.6) both happened.
+### 4. Report
+The worktree path + branch, what was built, tests + readiness, agents that ran, and that the session
+was saved (resume later with `/resume-app`).
+
+Not done until it built in its own worktree **and** memory + the session summary were saved.

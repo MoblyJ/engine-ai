@@ -84,7 +84,8 @@ claude mcp list        # → engine-ai … ✔ Connected
 
 | Command | What it does |
 |---|---|
-| `/new-app <idea>` | Build a **deployable** app in an **isolated session** — own workspace + the orchestrator agent runs the full A2A loop with memory |
+| `/new-app <idea>` | Build a **deployable** app in a **hard-isolated git worktree** (own branch + folder) — the orchestrator runs the full A2A loop with memory |
+| `/resume-app` | List past app sessions (2-line summary each) and **reopen** one — its worktree folder + memory context restored |
 | `/mobile-check [path]` | Audit & fix **mobile responsiveness** |
 | `/deploy-check [path]` | Score deployability and fix the gaps |
 | `/ground <task>` | Index the repo and work grounded in its real code (RAG) |

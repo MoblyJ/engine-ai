@@ -24,10 +24,12 @@ from deploy import deploy_readiness, scaffold  # noqa: E402
 from engine import Engine  # noqa: E402
 from integrations import git_publish, responsive_audit, vercel_deploy  # noqa: E402
 from memory import Memory  # noqa: E402
+from sessions import Sessions  # noqa: E402
 
 PROTOCOL = "2024-11-05"
 ENGINE = Engine()
 MEM = Memory()
+SESS = Sessions()
 
 # ----------------------------------------------------------- tool registry
 TOOLS: list[dict] = []
@@ -146,6 +148,30 @@ def _memory_list(a):
 @tool("memory_forget", "Delete a memory pocket by id.", _obj({"id": {"type": "integer"}}, ["id"]))
 def _memory_forget(a):
     return MEM.forget(int(a["id"]))
+
+
+@tool("app_create", "Start a new isolated app session in its own GIT WORKTREE (own branch + folder). Returns the worktree path to build in. Call this at the start of /new-app.",
+      _obj({"name": {"type": "string"}, "keywords": {"type": "array", "items": {"type": "string"}},
+            "path": {"type": "string"}}, ["name"]))
+def _app_create(a):
+    return SESS.create(a["name"], keywords=a.get("keywords"), path=a.get("path"))
+
+
+@tool("app_update", "Save a 2-line summary + keywords for an app session (call after building so /resume-app shows what it is).",
+      _obj({"id": {"type": "integer"}, "summary": {"type": "string"}, "keywords": {"type": "array", "items": {"type": "string"}}}, ["id"]))
+def _app_update(a):
+    return SESS.update(int(a["id"]), summary=a.get("summary"), keywords=a.get("keywords"))
+
+
+@tool("app_list", "List all previous app sessions (id, name, path, branch, and a 2-line summary) for /resume-app.", _obj({}))
+def _app_list(a):
+    return {"sessions": SESS.list()}
+
+
+@tool("app_resume", "Resume a previous app by id or slug — returns its worktree path, branch, and recalled memory context to continue where it left off.",
+      _obj({"key": {"type": "string"}}, ["key"]))
+def _app_resume(a):
+    return SESS.resume(a["key"])
 
 
 # ----------------------------------------------------------- JSON-RPC plumbing
