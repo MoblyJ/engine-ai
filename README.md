@@ -91,6 +91,7 @@ claude mcp list        # → engine-ai … ✔ Connected
 | `/ground <task>` | Index the repo and work grounded in its real code (RAG) |
 | `/ship-live` | **Session-aware** ship: publish the app's worktree/branch to **GitHub** + **Vercel**, verify the URL, record it back to the session |
 | `/expert <question>` | Ask one of **30 domain experts** (frontend, system-design, ML, LLM, security…) — grounded in **ingested engineering knowledge** + memory |
+| `/knowledge [query]` | **Browse & search** the ingested knowledge store — domains, sources, full-text search with citations |
 
 Or just talk to it: *"build a responsive coffee-shop landing page, then ship it live."*
 
@@ -112,10 +113,10 @@ flowchart LR
 <table>
 <tr><td valign="top">
 
-**Slash commands** (7)
+**Slash commands** (8)
 `/new-app` · `/resume-app` · `/expert`
-`/mobile-check` · `/deploy-check`
-`/ground` · `/ship-live`
+`/knowledge` · `/mobile-check`
+`/deploy-check` · `/ground` · `/ship-live`
 
 **Agents** — in `/agents` (36)
 `engine-orchestrator` + 5 engine agents
@@ -197,7 +198,7 @@ has memory bookends (recall first, save last) so work evolves.
 | **mobile-responsive** | recall → audit → fix (viewport, `@media` 640/768/1024, fluid units, tap targets ≥44px, responsive images) → verify at 390/768px → save | build/review any UI, or say mobile/responsive/phone |
 | **publish-and-deploy** | check tests + readiness → **GitHub** (asks name) → **Vercel** → verify the live URL → save | say push, deploy, go live, or ship |
 
-## ⌨️ Commands — 6 slash commands
+## ⌨️ Commands — 8 slash commands
 
 Every command shares **one loop**: locate the app session (`app_find`) → **recall** memory → do the
 work → **save** memory + update the session. So an app accumulates its branch + folder + memory +
@@ -211,6 +212,8 @@ status across all of them.
 | `/mobile-check [path]` | `app_find` + `memory_context` → `responsive_audit` → fix → `memory_save` + `app_update` (📱) |
 | `/deploy-check [path]` | `app_find` + `memory_context` → `deploy_readiness` → fix to 100 → `memory_save` + `app_update` (🚀) |
 | `/ship-live` | `app_find` → gate → `git_publish` + `vercel_deploy` → verify → `memory_save` + `app_update` (URLs) |
+| `/expert <q>` | pick domain(s) → delegate to `domain-<slug>` expert(s) → `context_pack` + `knowledge_search` → cited answer |
+| `/knowledge [q]` | `knowledge_domains` (browse) or `knowledge_search` (find) → cited hits; open source files under `~/.engine-ai/sources/` |
 
 ## 🧰 MCP tools — 26 (the agent calls these; you ask in English)
 
