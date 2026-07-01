@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* Runs on `npm rm -g mobly-ai` — best-effort disconnect from Claude Code
+/* Runs on `npm rm -g engine-ai` — best-effort disconnect from Claude Code
  * (unlink skills/commands, remove hook + MCP registration). Never fails. */
 "use strict";
 const { spawnSync } = require("node:child_process");

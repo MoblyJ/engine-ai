@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-/* mobly-ai CLI — connect / disconnect the toolkit to Claude Code.
- * Thin Node wrapper around install.sh so `npm i -g mobly-ai` works cross-shell. */
+/* engine-ai CLI — connect / disconnect the toolkit to Claude Code.
+ * Thin Node wrapper around install.sh so `npm i -g engine-ai` works cross-shell. */
 "use strict";
 const { spawnSync } = require("node:child_process");
 const path = require("node:path");
@@ -20,14 +20,14 @@ function runInstall(args) {
 function claudeMissingMessage() {
   console.error(`
 \x1b[31m✗ Claude Code was not found on this system.\x1b[0m
-mobly-ai plugs into Claude Code, so install that first:
+engine-ai plugs into Claude Code, so install that first:
 
     npm install -g @anthropic-ai/claude-code
     # or:  curl -fsSL https://claude.ai/install.sh | bash
 
-Then connect mobly-ai:
+Then connect engine-ai:
 
-    mobly-ai connect
+    engine-ai connect
 `);
 }
 
@@ -37,7 +37,7 @@ switch (cmd) {
   case "connect":
   case "install": {
     if (!have("claude")) { claudeMissingMessage(); process.exit(1); }
-    if (!have("python3")) { console.error("\x1b[31m✗ python3 not found.\x1b[0m mobly-ai's tools run on Python 3 — install it and retry."); process.exit(1); }
+    if (!have("python3")) { console.error("\x1b[31m✗ python3 not found.\x1b[0m engine-ai's tools run on Python 3 — install it and retry."); process.exit(1); }
     process.exit(runInstall(process.argv.includes("--import-siblings") ? ["--import-siblings"] : []));
   }
   case "uninstall":
@@ -45,7 +45,7 @@ switch (cmd) {
     process.exit(runInstall(["--uninstall"]));
   case "doctor": {
     const claude = have("claude"), py = have("python3");
-    console.log("mobly-ai doctor:");
+    console.log("engine-ai doctor:");
     console.log(`  Claude Code : ${claude ? "\x1b[32m✓ found\x1b[0m" : "\x1b[31m✗ missing → npm i -g @anthropic-ai/claude-code\x1b[0m"}`);
     console.log(`  python3     : ${py ? "\x1b[32m✓ found\x1b[0m" : "\x1b[31m✗ missing\x1b[0m"}`);
     console.log(`  package     : ${ROOT}`);
@@ -54,13 +54,13 @@ switch (cmd) {
     process.exit(claude && py ? 0 : 1);
   }
   default:
-    console.log(`mobly-ai — Claude Code toolkit
+    console.log(`engine-ai — Claude Code toolkit
 
 Usage:
-  mobly-ai connect            wire mobly-ai into Claude Code (skills, commands, MCP tools)
-  mobly-ai connect --import-siblings   also import skills from ../agent-skills ../gstack ../oh-my-pi
-  mobly-ai uninstall          remove it from Claude Code
-  mobly-ai doctor             check prerequisites + connection status
+  engine-ai connect            wire engine-ai into Claude Code (skills, commands, MCP tools)
+  engine-ai connect --import-siblings   also import skills from ../agent-skills ../gstack ../oh-my-pi
+  engine-ai uninstall          remove it from Claude Code
+  engine-ai doctor             check prerequisites + connection status
 
 After connecting, open a NEW Claude Code session and try:  /new-app  ·  /mobile-check  ·  /ship-live`);
     process.exit(0);

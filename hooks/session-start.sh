@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# mobly-ai activation hook (Claude Code SessionStart).
+# engine-ai activation hook (Claude Code SessionStart).
 # Emits additionalContext so every new session knows the toolkit is active and how to use it.
 # Output contract: JSON on stdout that Claude Code injects as context.
 set -euo pipefail
 
 read -r -d '' CTX <<'EOF' || true
-mobly-ai is ACTIVE. You have an MCP server "mobly-ai" with tools:
+engine-ai is ACTIVE. You have an MCP server "engine-ai" with tools:
   scaffold_app, deploy_readiness, index_repo, search_repo, list_skills, get_skill,
   import_repo_skills, set_secret, list_secrets.
 Slash commands: /new-app (build a deployable app), /deploy-check (audit deployability),

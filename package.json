@@ -1,9 +1,9 @@
 {
-  "name": "mobly-ai",
+  "name": "engine-ai",
   "version": "0.1.0",
   "description": "Supercharge Claude Code in your terminal — build, mobile-check, and ship deployable apps to GitHub + Vercel. One command install, auto-connects.",
   "bin": {
-    "mobly-ai": "bin/mobly-ai.js"
+    "engine-ai": "bin/engine-ai.js"
   },
   "scripts": {
     "postinstall": "node bin/postinstall.js",
@@ -25,7 +25,7 @@
   ],
   "engines": { "node": ">=18" },
   "os": [ "linux", "darwin" ],
-  "repository": { "type": "git", "url": "github:MoblyJ/mobly-ai" },
-  "homepage": "https://github.com/MoblyJ/mobly-ai#readme",
+  "repository": { "type": "git", "url": "github:MoblyJ/engine-ai" },
+  "homepage": "https://github.com/MoblyJ/engine-ai#readme",
   "license": "MIT"
 }

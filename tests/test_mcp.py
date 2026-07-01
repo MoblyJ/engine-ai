@@ -11,8 +11,8 @@ SERVER = os.path.join(REPO, "mcp", "forge_mcp.py")
 
 class MCPClient:
     def __init__(self, home):
-        env = {**os.environ, "MOBLY_AI_HOME": home,
-               "MOBLY_AI_MASTER_KEY": "test-key"}
+        env = {**os.environ, "ENGINE_AI_HOME": home,
+               "ENGINE_AI_MASTER_KEY": "test-key"}
         self.p = subprocess.Popen(["python3", SERVER], stdin=subprocess.PIPE,
                                   stdout=subprocess.PIPE, text=True, env=env, bufsize=1)
         self._id = 0
@@ -51,7 +51,7 @@ class TestMCP(unittest.TestCase):
 
     def test_initialize(self):
         r = self.cli.call("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}})
-        self.assertEqual(r["result"]["serverInfo"]["name"], "mobly-ai")
+        self.assertEqual(r["result"]["serverInfo"]["name"], "engine-ai")
         self.assertIn("tools", r["result"]["capabilities"])
 
     def test_tools_list(self):

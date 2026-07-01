@@ -1,5 +1,5 @@
 ---
-description: Scaffold and build a new deployable app end-to-end (uses the deployable-app skill + mobly-ai MCP tools).
+description: Scaffold and build a new deployable app end-to-end (uses the deployable-app skill + engine-ai MCP tools).
 ---
 
 Build a new deployable application based on: $ARGUMENTS

@@ -1,4 +1,4 @@
-# Using mobly-ai in Claude Code — build full deployable apps
+# Using engine-ai in Claude Code — build full deployable apps
 
 This toolkit installs **into your existing Claude Code on WSL** and gives every session a set of
 slash commands, a skill, and an MCP server it can call. This guide shows how to use them to take an
@@ -12,7 +12,7 @@ The installer (`./install.sh`) wired four things into `~/.claude`:
 
 | Thing | Where | Confirm |
 |---|---|---|
-| **MCP server** (the tools) | registered user-scope | `claude mcp list` → `mobly-ai … ✔ Connected` |
+| **MCP server** (the tools) | registered user-scope | `claude mcp list` → `engine-ai … ✔ Connected` |
 | **Skill** `deployable-app` | `~/.claude/skills/` | `/help` or it auto-triggers on "build an app" |
 | **Slash commands** | `~/.claude/commands/` | type `/` → `new-app`, `deploy-check`, `ground` |
 | **Activation hook** | `~/.claude/settings.json` (SessionStart) | new sessions get a one-line "toolkit active" context |

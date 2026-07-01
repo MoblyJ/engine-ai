@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# mobly-ai installer — integrates the toolkit into Claude Code on WSL.
+# engine-ai installer — integrates the toolkit into Claude Code on WSL.
 #
 #   ./install.sh                 install (detects Claude Code, wires skills/commands/hook/MCP)
 #   ./install.sh --import-siblings   also import skills from ../agent-skills ../gstack ../oh-my-pi
@@ -14,7 +14,7 @@ SKILLS_DIR="$CLAUDE_DIR/skills"
 CMDS_DIR="$CLAUDE_DIR/commands"
 SETTINGS="$CLAUDE_DIR/settings.json"
 HOOK="$REPO_DIR/hooks/session-start.sh"
-MCP_NAME="mobly-ai"
+MCP_NAME="engine-ai"
 MCP_CMD=(python3 "$REPO_DIR/mcp/forge_mcp.py")
 
 c() { printf '\033[%sm%s\033[0m\n' "$1" "$2"; }
@@ -103,7 +103,7 @@ register_mcp() {
 }
 
 do_install() {
-  info "mobly-ai installer"
+  info "engine-ai installer"
   detect_wsl
   detect_claude || exit 1
   link_dir "$REPO_DIR/skills" "$SKILLS_DIR" ""
@@ -136,7 +136,7 @@ PY
 }
 
 do_uninstall() {
-  info "uninstalling mobly-ai"
+  info "uninstalling engine-ai"
   unlink_from "$SKILLS_DIR"; ok "skills unlinked"
   unlink_from "$CMDS_DIR"; ok "commands unlinked"
   merge_hook remove >/dev/null && ok "activation hook removed"

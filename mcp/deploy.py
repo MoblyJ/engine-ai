@@ -167,6 +167,6 @@ def scaffold(root: str, kind: str) -> dict:
     written.append(_w(root, ".gitignore", "node_modules\n.venv\n__pycache__\n.env\ndist\n"))
     if not os.path.exists(os.path.join(root, "README.md")):
         written.append(_w(root, "README.md",
-            f"# app ({kind})\n\nScaffolded by mobly-ai. Deployable skeleton with a "
+            f"# app ({kind})\n\nScaffolded by engine-ai. Deployable skeleton with a "
             f"/healthz endpoint, tests, Dockerfile, and CI.\n\n## Run\n\nSee Dockerfile / CI.\n"))
     return {"kind": kind, "root": root, "files": written, "count": len(written)}

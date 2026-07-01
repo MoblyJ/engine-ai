@@ -52,12 +52,12 @@ def git_publish(path: str, repo_name: str, private: bool = True) -> dict:
         _run(["git", "init", "-b", "main"], cwd=path)
     # local identity fallback so the commit doesn't fail on a fresh box
     if _run(["git", "config", "user.email"], cwd=path)[1] == "":
-        _run(["git", "config", "user.email", "agent@mobly-ai.local"], cwd=path)
-        _run(["git", "config", "user.name", "mobly-ai"], cwd=path)
+        _run(["git", "config", "user.email", "agent@engine-ai.local"], cwd=path)
+        _run(["git", "config", "user.name", "engine-ai"], cwd=path)
     _run(["git", "add", "-A"], cwd=path)
     # commit only if there's something staged
     if _run(["git", "diff", "--cached", "--quiet"], cwd=path)[0] != 0:
-        _run(["git", "commit", "-m", "initial commit (mobly-ai)"], cwd=path)
+        _run(["git", "commit", "-m", "initial commit (engine-ai)"], cwd=path)
 
     vis = "--private" if private else "--public"
     code, out, err = _run(["gh", "repo", "create", repo_name, "--source", path,

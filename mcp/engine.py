@@ -3,7 +3,7 @@
 This is the local, single-user backend for the Claude Code integration: it gives the MCP
 server a repo-aware RAG index, a unified skill registry (with importers for the three
 source repos), and an encrypted secrets vault — all in one SQLite file under
-~/.mobly-ai. Claude Code itself is the agent loop, so there is no job queue here.
+~/.engine-ai. Claude Code itself is the agent loop, so there is no job queue here.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import secrets
 import sqlite3
 import time
 
-HOME = os.path.expanduser(os.environ.get("MOBLY_AI_HOME", "~/.mobly-ai"))
+HOME = os.path.expanduser(os.environ.get("ENGINE_AI_HOME", "~/.engine-ai"))
 DIM = 512
 TEXT_EXT = {".py", ".ts", ".tsx", ".js", ".jsx", ".rs", ".go", ".java", ".rb", ".md", ".txt",
             ".json", ".toml", ".yaml", ".yml", ".sh", ".c", ".h", ".cpp", ".css", ".html"}
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS rag(
 
 # ----------------------------------------------------------- crypto (dev-grade AEAD)
 def _master_key() -> bytes:
-    env = os.environ.get("MOBLY_AI_MASTER_KEY")
+    env = os.environ.get("ENGINE_AI_MASTER_KEY")
     if env:
         return env.encode()
     os.makedirs(HOME, exist_ok=True)

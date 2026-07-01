@@ -1,12 +1,12 @@
 ---
 name: deployable-app
-description: Build a complete, deployable application end to end — scaffold, implement, test, containerize, and ship. Use when the user asks to build/create an app, service, API, or site, or to make an existing project deployable. Leans on the mobly-ai MCP tools (scaffold_app, deploy_readiness, search_repo, set_secret).
+description: Build a complete, deployable application end to end — scaffold, implement, test, containerize, and ship. Use when the user asks to build/create an app, service, API, or site, or to make an existing project deployable. Leans on the engine-ai MCP tools (scaffold_app, deploy_readiness, search_repo, set_secret).
 ---
 
 # Deployable App
 
 Build apps that actually ship — not demos. "Done" means: runs, tested, containerized, has CI,
-documents its env, and has a healthcheck. Use the `mobly-ai` MCP tools at each step.
+documents its env, and has a healthcheck. Use the `engine-ai` MCP tools at each step.
 
 ## When to use
 - "Build me a ___ app / API / service / landing page"

@@ -43,7 +43,7 @@ class TestInstaller(unittest.TestCase):
         # MCP registered via the stub
         log = open(self.log).read()
         self.assertIn("mcp add", log)
-        self.assertIn("mobly-ai", log)
+        self.assertIn("engine-ai", log)
 
     def test_idempotent(self):
         self._run(); self._run()  # twice

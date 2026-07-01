@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""mobly-ai MCP server (stdio, JSON-RPC 2.0) for Claude Code.
+"""engine-ai MCP server (stdio, JSON-RPC 2.0) for Claude Code.
 
 Claude Code launches this via `claude mcp add`. It speaks the Model Context Protocol over
 stdin/stdout (newline-delimited JSON) and exposes the toolkit as callable tools:
@@ -134,7 +134,7 @@ def handle(msg: dict):
         return _result(id_, {
             "protocolVersion": proto,
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": "mobly-ai", "version": "0.1.0"},
+            "serverInfo": {"name": "engine-ai", "version": "0.1.0"},
         })
     if method in ("notifications/initialized", "notifications/cancelled"):
         return None  # notifications: no response

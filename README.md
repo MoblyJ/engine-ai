@@ -1,6 +1,6 @@
 <div align="center">
 
-# ◈ mobly-ai
+# ◈ Engine-ai
 
 ### Turn your terminal **Claude Code** into a deployable-app factory.
 **Build → mobile-check → publish to GitHub → deploy to Vercel — from inside Claude Code.**
@@ -18,7 +18,7 @@
 
 ## 🤔 What is it?
 
-`mobly-ai` is a **toolkit that plugs into the Claude Code you already run in the terminal**. One npm
+`engine-ai` is a **toolkit that plugs into the Claude Code you already run in the terminal**. One npm
 command installs it and it **auto-connects** — adding slash commands, skills, and an **MCP server** of
 tools your agent can call. You describe an app in plain English; Claude scaffolds it, tests it, checks
 mobile responsiveness, and ships it to **GitHub + Vercel**.
@@ -28,7 +28,7 @@ mobile responsiveness, and ships it to **GitHub + Vercel**.
 
 ```
         you (in Claude Code)  ──"build me a landing page"──▶  Claude
-                                                                │  calls mobly-ai tools
+                                                                │  calls engine-ai tools
                         ┌───────────────────────────────────────┴───────────────────────────┐
                         ▼                 ▼               ▼                ▼                   ▼
                    scaffold_app     responsive_audit   git_publish     vercel_deploy      deploy_readiness
@@ -41,23 +41,23 @@ mobile responsiveness, and ships it to **GitHub + Vercel**.
 ## 🚀 Install (one command)
 
 ```bash
-npm install -g MoblyJ/mobly-ai
+npm install -g MoblyJ/engine-ai
 ```
 
 That's it — the installer **auto-detects Claude Code and connects itself**. Then **open a new Claude
 Code session**.
 
-> **Claude Code not installed?** You'll get a clean message and mobly-ai waits:
+> **Claude Code not installed?** You'll get a clean message and engine-ai waits:
 > ```
 > ✗ Claude Code was not found on this system.
 >   npm install -g @anthropic-ai/claude-code
->   mobly-ai connect
+>   engine-ai connect
 > ```
 
 Verify:
 ```bash
-mobly-ai doctor        # checks Claude Code + python3 + shows the MCP connection
-claude mcp list        # → mobly-ai … ✔ Connected
+engine-ai doctor        # checks Claude Code + python3 + shows the MCP connection
+claude mcp list        # → engine-ai … ✔ Connected
 ```
 
 ---
@@ -116,17 +116,53 @@ flowchart LR
 
 ---
 
+## 🤖 What each agent does
+
+Engine-ai adds **specialist agents (skills)** that Claude adopts automatically, **slash commands** you
+trigger, and **MCP tools** the agent calls under the hood.
+
+### Agents (skills — auto-triggered by what you ask)
+| Agent | What it does | Fires when you… |
+|---|---|---|
+| 🏗️ **deployable-app** | Builds a complete app end-to-end: scaffold → implement → **test** → mobile check → deploy-readiness → ship. Won't call it "done" until tests pass, readiness = 100, and the container answers `/healthz`. | ask to build/create an app, API, service, or site |
+| 📱 **mobile-responsive** | Audits & fixes mobile UX — viewport, breakpoints, fluid layout, tap targets, responsive images — and verifies at phone/tablet widths. | build/review any UI, or mention mobile/responsive/phone |
+| 🚀 **publish-and-deploy** | Takes a tested app → **GitHub repo** (asks you the name) → **Vercel** live URL → verifies the URL responds. | say push to GitHub, deploy, go live, or ship |
+
+### Commands (you type these in Claude Code)
+| Command | Does |
+|---|---|
+| `/new-app <idea>` | scaffold + build a deployable app |
+| `/mobile-check [path]` | audit & fix mobile responsiveness |
+| `/deploy-check [path]` | score deployability + fix gaps |
+| `/ground <task>` | index the repo, work grounded in its real code (RAG) |
+| `/ship-live` | publish to GitHub + deploy to Vercel |
+
+### Tools (the agent calls these — you just ask in English)
+| Tool | Purpose |
+|---|---|
+| `scaffold_app` | write a deployable skeleton (node-api / python-api / static): server + healthcheck + tests + Dockerfile + CI |
+| `deploy_readiness` | score deployability + list exactly what's missing |
+| `responsive_audit` | static mobile-responsiveness score + findings |
+| `git_publish` | create a GitHub repo and push (uses your `gh` login) |
+| `vercel_deploy` | deploy and return the live URL |
+| `index_repo` / `search_repo` | build + query a repo-aware knowledge index (RAG grounding) |
+| `list_skills` / `get_skill` | browse the workflow library |
+| `import_repo_skills` | ingest more `SKILL.md` skills from any repo |
+| `set_secret` / `list_secrets` | encrypted secrets vault (names-only listing) |
+
+---
+
 ## 🏗️ How it connects
 
 ```mermaid
 flowchart TD
-  N["npm i -g MoblyJ/mobly-ai"] --> P[postinstall auto-connect]
+  N["npm i -g MoblyJ/engine-ai"] --> P[postinstall auto-connect]
   P -->|claude found| I[install.sh]
-  P -->|claude missing| M["clean message → mobly-ai connect later"]
+  P -->|claude missing| M["clean message → engine-ai connect later"]
   I --> S1[skills → ~/.claude/skills]
   I --> S2[commands → ~/.claude/commands]
   I --> S3[SessionStart hook → ~/.claude/settings.json]
-  I --> S4["claude mcp add -s user mobly-ai"]
+  I --> S4["claude mcp add -s user engine-ai"]
   S4 --> R["✔ Connected in every project"]
 ```
 
@@ -139,11 +175,11 @@ Everything installs at **user scope**, so it's available in **every folder** you
 These need their own login (once per machine):
 
 ```bash
-gh auth login       # GitHub  (mobly-ai uses your gh session)
+gh auth login       # GitHub  (engine-ai uses your gh session)
 vercel login        # Vercel
 ```
 
-> `mobly-ai` reuses your **`gh` login in WSL** to create + push repos. There is no way to reuse the
+> `engine-ai` reuses your **`gh` login in WSL** to create + push repos. There is no way to reuse the
 > Google account connected to Claude for GitHub — GitHub needs its own auth.
 
 ---
@@ -160,16 +196,16 @@ fails cleanly with no Claude Code).
 ## 🧹 Manage
 
 ```bash
-mobly-ai connect      # (re)connect to Claude Code
-mobly-ai doctor       # prerequisites + status
-mobly-ai uninstall    # remove from Claude Code (also runs on npm rm -g)
+engine-ai connect      # (re)connect to Claude Code
+engine-ai doctor       # prerequisites + status
+engine-ai uninstall    # remove from Claude Code (also runs on npm rm -g)
 ```
 
 ---
 
 ## 📦 Moving to another PC
 
-Copy the folder (or `npm i -g MoblyJ/mobly-ai` again), then it auto-connects. Logins (`gh`, `vercel`)
+Copy the folder (or `npm i -g MoblyJ/engine-ai` again), then it auto-connects. Logins (`gh`, `vercel`)
 are per-machine. See `docs/USING-IN-CLAUDE-CODE.md`.
 
 <div align="center"><sub>MIT · built for Claude Code · by <a href="https://github.com/MoblyJ">MoblyJ</a></sub></div>

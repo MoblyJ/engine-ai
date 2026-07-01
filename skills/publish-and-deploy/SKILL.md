@@ -1,6 +1,6 @@
 ---
 name: publish-and-deploy
-description: After an app is built and tested, publish it to GitHub and deploy it live to Vercel, then verify the live URL. Use when the user wants to push to GitHub, create a repo, deploy, go live, or ship to production. Asks for the repo name. Uses the mobly-ai MCP tools git_publish and vercel_deploy.
+description: After an app is built and tested, publish it to GitHub and deploy it live to Vercel, then verify the live URL. Use when the user wants to push to GitHub, create a repo, deploy, go live, or ship to production. Asks for the repo name. Uses the engine-ai MCP tools git_publish and vercel_deploy.
 ---
 
 # Publish & Deploy

@@ -1,6 +1,6 @@
 ---
 name: mobile-responsive
-description: Audit and fix a web app's mobile responsiveness — viewport, breakpoints, fluid layout, touch-friendly UI — and verify at phone/tablet viewports. Use when building or reviewing any frontend/UI/website, or when the user mentions mobile, responsive, phone, or small-screen. Uses the mobly-ai MCP tool `responsive_audit`.
+description: Audit and fix a web app's mobile responsiveness — viewport, breakpoints, fluid layout, touch-friendly UI — and verify at phone/tablet viewports. Use when building or reviewing any frontend/UI/website, or when the user mentions mobile, responsive, phone, or small-screen. Uses the engine-ai MCP tool `responsive_audit`.
 ---
 
 # Mobile Responsive
