@@ -43,6 +43,25 @@ switch (cmd) {
   case "uninstall":
   case "disconnect":
     process.exit(runInstall(["--uninstall"]));
+  case "knowledge": {
+    const sub = (process.argv[3] || "status").toLowerCase();
+    if (!have("python3")) { console.error("\x1b[31m✗ python3 not found.\x1b[0m"); process.exit(1); }
+    if (sub === "sync") {
+      console.log("Cloning + ingesting the curated engineering repos (this can take a few minutes)…");
+      process.exit(spawnSync("python3", [path.join(ROOT, "mcp/knowledge_sync.py"), ...process.argv.slice(4)],
+        { cwd: ROOT, stdio: "inherit" }).status || 0);
+    }
+    if (sub === "agents") {
+      process.exit(spawnSync("python3", [path.join(ROOT, "mcp/gen_domain_agents.py")], { cwd: ROOT, stdio: "inherit" }).status || 0);
+    }
+    // status
+    const r = spawnSync("python3", ["-c",
+      "import sys,json;sys.path.insert(0,sys.argv[1]);from knowledge import Knowledge;k=Knowledge();" +
+      "print('domains:');[print(f\"  {d['domain']:20} {d['chunks']} chunks / {d['repos']} repos\") for d in k.domains()] or print('  (none — run: engine-ai knowledge sync)')",
+      path.join(ROOT, "mcp")], { encoding: "utf8" });
+    process.stdout.write(r.stdout || r.stderr || "");
+    process.exit(0);
+  }
   case "doctor": {
     const claude = have("claude"), py = have("python3");
     console.log("engine-ai doctor:");
@@ -61,7 +80,10 @@ Usage:
   engine-ai connect --import-siblings   also import skills from ../agent-skills ../gstack ../oh-my-pi
   engine-ai uninstall          remove it from Claude Code
   engine-ai doctor             check prerequisites + connection status
+  engine-ai knowledge sync     clone + ingest the curated engineering repos into the knowledge store
+  engine-ai knowledge status   show ingested domains + chunk counts
+  engine-ai knowledge agents   regenerate the domain-expert subagents
 
-After connecting, open a NEW Claude Code session and try:  /new-app  ·  /mobile-check  ·  /ship-live`);
+After connecting, open a NEW Claude Code session and try:  /new-app · /expert · /resume-app · /ship-live`);
     process.exit(0);
 }

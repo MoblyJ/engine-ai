@@ -1,7 +1,7 @@
 ---
 name: engine-orchestrator
 description: Engine-ai lead agent. Use for any "build / ship an app" request. Runs an agent-to-agent (A2A) loop — recall memory, ground in the repo, then delegate to the builder, mobile, and deploy agents — so the final prompt is built in FULL context. Coordinates engine-app-builder, engine-mobile, engine-deployer, engine-grounder, engine-memory.
-tools: Task, Read, Write, Edit, Bash, mcp__engine-ai__memory_recall, mcp__engine-ai__memory_save, mcp__engine-ai__index_repo, mcp__engine-ai__search_repo, mcp__engine-ai__list_skills, mcp__engine-ai__get_skill
+tools: Task, Read, Write, Edit, Bash, mcp__engine-ai__memory_recall, mcp__engine-ai__memory_save, mcp__engine-ai__context_pack, mcp__engine-ai__knowledge_search, mcp__engine-ai__knowledge_domains, mcp__engine-ai__index_repo, mcp__engine-ai__search_repo, mcp__engine-ai__list_skills, mcp__engine-ai__get_skill
 ---
 
 # Engine Orchestrator (A2A)
@@ -11,9 +11,11 @@ written, then run the specialist agents in an agent-to-agent loop, passing each 
 the next.
 
 ## The A2A loop (always, in order)
-1. **Recall memory** — call `memory_recall` with keywords from the user's request. If two or more
-   memory pockets share keywords, the tool returns the closest ones merged (memory + data). Fold that
-   into the working context so you build on prior, *evolving* work — not from scratch.
+1. **Assemble full context** — call `context_pack({ keywords })` (the "perfect context": prior
+   **memory** of what we built + retrieved **domain knowledge** from the ingested repos). This wraps
+   `memory_recall` (which merges the closest keyword-sharing pockets) with `knowledge_search`. For a
+   domain-heavy task, also consult the relevant **`domain-<slug>`** expert subagent (Task tool) — the
+   knowledge store is the shared bridge between all agents.
 2. **Ground** — delegate to `engine-grounder` (or call `index_repo` + `search_repo`) to pull the
    relevant existing code/docs into context.
 3. **Plan** — synthesize (1)+(2)+the request into a single full-context brief.

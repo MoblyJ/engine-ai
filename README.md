@@ -90,6 +90,7 @@ claude mcp list        # → engine-ai … ✔ Connected
 | `/deploy-check [path]` | Score deployability and fix the gaps |
 | `/ground <task>` | Index the repo and work grounded in its real code (RAG) |
 | `/ship-live` | **Session-aware** ship: publish the app's worktree/branch to **GitHub** + **Vercel**, verify the URL, record it back to the session |
+| `/expert <question>` | Ask one of **30 domain experts** (frontend, system-design, ML, LLM, security…) — grounded in **ingested engineering knowledge** + memory |
 
 Or just talk to it: *"build a responsive coffee-shop landing page, then ship it live."*
 
@@ -111,16 +112,17 @@ flowchart LR
 <table>
 <tr><td valign="top">
 
-**Slash commands** (6)
-`/new-app` · `/resume-app`
+**Slash commands** (7)
+`/new-app` · `/resume-app` · `/expert`
 `/mobile-check` · `/deploy-check`
 `/ground` · `/ship-live`
 
-**Agents** — in `/agents` (6)
-`engine-orchestrator`
-`engine-app-builder` · `engine-mobile`
-`engine-deployer` · `engine-grounder`
-`engine-memory`
+**Agents** — in `/agents` (36)
+`engine-orchestrator` + 5 engine agents
+`engine-{app-builder,mobile,deployer,`
+`grounder,memory}` · **30 `domain-*`**
+**experts** (frontend, system-design,
+ml, llm, security, …)
 
 **Skills** — auto-triggered (3)
 `deployable-app` · `mobile-responsive`
@@ -128,7 +130,7 @@ flowchart LR
 
 </td><td valign="top">
 
-**MCP tools** (22)
+**MCP tools** (26)
 
 🏗️ *Build / ship* — `scaffold_app` ·
 `deploy_readiness` · `responsive_audit` ·
@@ -148,16 +150,21 @@ flowchart LR
 `app_update` · `app_list` · `app_resume` ·
 `app_find`
 
+🎓 *Knowledge swarm* — `knowledge_ingest` ·
+`knowledge_search` · `knowledge_domains` ·
+`context_pack`
+
 </td></tr>
 </table>
 
 ---
 
-## 🧑‍🚀 Agents — the 6 subagents (in Claude Code `/agents`)
+## 🧑‍🚀 Agents — 36 subagents (in Claude Code `/agents`)
 
-engine-ai installs six **subagents** into `~/.claude/agents/`. They show up in Claude Code's `/agents`
-menu and are invoked either directly or by the orchestrator as an **agent-to-agent (A2A) loop**. Each
-has its own context and its own tool set (so it can only do its job).
+engine-ai installs **36 subagents** into `~/.claude/agents/`: **6 engine agents** (below) that run the
+build/ship loop, and **30 `domain-*` experts** (see [Knowledge swarm](#-knowledge-swarm--30-domain-experts-grounded-by-retrieval)).
+They show up in Claude Code's `/agents` menu and are invoked either directly or by the orchestrator as
+an **agent-to-agent (A2A) loop**. Each has its own context and its own tool set (so it can only do its job).
 
 | Agent | What it does | When it runs | Its tools |
 |---|---|---|---|
@@ -205,7 +212,7 @@ status across all of them.
 | `/deploy-check [path]` | `app_find` + `memory_context` → `deploy_readiness` → fix to 100 → `memory_save` + `app_update` (🚀) |
 | `/ship-live` | `app_find` → gate → `git_publish` + `vercel_deploy` → verify → `memory_save` + `app_update` (URLs) |
 
-## 🧰 MCP tools — 22 (the agent calls these; you ask in English)
+## 🧰 MCP tools — 26 (the agent calls these; you ask in English)
 
 | Group | Tool | Purpose |
 |---|---|---|
@@ -225,6 +232,10 @@ status across all of them.
 | | `app_list` / `app_resume` | list sessions (2-line summaries) / reopen one with folder + memory |
 | | `app_update` | save a session's 2-line summary + keywords |
 | | `app_find` | which app session a working dir belongs to (for session-aware commands) |
+| 🎓 Knowledge | `knowledge_ingest` | clone/ingest a repo into the domain-tagged FTS5 store |
+| | `knowledge_search` | BM25 search the ingested knowledge, optionally by domain |
+| | `knowledge_domains` | list ingested domains + chunk/repo counts |
+| | `context_pack` | **the "perfect context"**: prior memory + retrieved domain knowledge in one blob |
 
 ---
 
@@ -251,6 +262,48 @@ flowchart LR
 The **engine-orchestrator** runs this as an **agent-to-agent (A2A) loop**: recall memory → ground in
 the repo → plan → build → mobile → ship → save memory. Each agent's output feeds the next, so the
 final prompt is assembled in **full context**. Stored at `~/.engine-ai/memory.db`.
+
+---
+
+## 🎓 Knowledge swarm — 30 domain experts, grounded by retrieval
+
+engine-ai ships a **swarm of 30 domain-expert subagents** (frontend, backend, devops, cloud,
+system-design, distributed-systems, databases, security, api-design, machine-learning, deep-learning,
+llm, prompt-engineering, data-engineering, mobile, testing, performance, observability, architecture,
+algorithms…). They "master" a field by **retrieval, not training**: you ingest curated engineering
+repos into a **domain-tagged SQLite FTS5** store, and the experts answer grounded in it (citing the
+source repo + path), plus their evolving memory.
+
+```bash
+engine-ai knowledge sync       # clone + ingest the curated repos (system-design, ML, LLM, roadmaps…)
+engine-ai knowledge status     # show ingested domains + chunk counts
+engine-ai knowledge agents     # regenerate the 30 domain-expert subagents
+```
+Then, inside Claude Code: `/expert design a scalable rate limiter` → routes to the `domain-system-design`
+expert, which `context_pack`s prior memory + retrieved knowledge and answers with citations.
+
+```mermaid
+flowchart LR
+  Q["/expert question"] --> R{pick domain}
+  R --> A["domain-&lt;slug&gt; subagent"]
+  A --> C[context_pack]
+  C --> M[memory pockets]
+  C --> K["knowledge_search (FTS5, by domain)"]
+  K --> KB[(ingested repos)]
+  A --> Ans[grounded answer + citations]
+```
+
+**What gets ingested** (curated, practical, ~4k chunks in ~9 MB): system-design-primer,
+system-design-101, awesome-system-design-resources, awesome-machine-learning, Prompt-Engineering-Guide,
+Awesome-LLM, build-your-own-x, AI/ML-For-Beginners, nn-zero-to-hero, developer-roadmap. Add your own
+any time: `knowledge_ingest(<repo-url>, "<domain>")`. Translations, images, and giant binaries are
+skipped; **multi-TB corpora (The Stack) and model training are intentionally out of scope** — this is
+retrieval, done locally.
+
+> **Design note** — mirrors Anthropic's Managed Agents / Agent SDK patterns, mapped local:
+> **agent** → subagent definition · **environment** → git worktree · **session** → app session
+> (`sessions.db`) · **memory store** → memory pockets (the cross-agent bridge) · **context isolation**
+> → each subagent gets explicit `context_pack` input, not the parent conversation.
 
 ---
 
@@ -312,6 +365,8 @@ SessionStart ──▶ session-start.sh ──▶ "engine-ai is ACTIVE — tools
 | `~/.engine-ai/workspace/` | central git repo that app worktrees branch from |
 | `~/.engine-ai/apps/<slug>/` | each app's **git worktree** (own branch + folder) |
 | `~/.engine-ai/forge.db` | repo RAG index |
+| `~/.engine-ai/knowledge.db` | 🎓 domain-tagged knowledge (FTS5) for the expert swarm |
+| `~/.engine-ai/sources/<repo>/` | shallow clones of the ingested knowledge repos |
 
 Nothing is cloud-only — it all runs and persists on your machine.
 
@@ -333,20 +388,24 @@ vercel login        # Vercel
 
 ## 🧪 Verified
 
-Pure-stdlib test suite (`python3 -m unittest discover -s tests`): **35 tests** — MCP protocol (22
+Pure-stdlib test suite (`python3 -m unittest discover -s tests`): **41 tests** — MCP protocol (26
 tools), scaffolding (node/python/static), RAG index+search, secrets vault, mobile-responsive audit,
 GitHub/Vercel auth guards, **memory pockets** (keyword recall + merge-on-similar + evolving context),
-**app sessions** (git worktree per app · 2-line summaries · resume-with-memory · `app_find`), and the
-installer (idempotent · preserves settings · clean uninstall · fails cleanly with no Claude Code).
+**app sessions** (git worktree per app · 2-line summaries · resume-with-memory · `app_find`),
+**knowledge store** (FTS5 ingest · domain-filtered BM25 search · translation skip · `context_pack`),
+and the installer (idempotent · preserves settings · clean uninstall · fails cleanly with no Claude Code).
 
 ---
 
 ## 🧹 Manage
 
 ```bash
-engine-ai connect      # (re)connect to Claude Code
-engine-ai doctor       # prerequisites + status
-engine-ai uninstall    # remove from Claude Code (also runs on npm rm -g)
+engine-ai connect            # (re)connect to Claude Code
+engine-ai doctor             # prerequisites + status
+engine-ai knowledge sync     # clone + ingest the curated engineering repos
+engine-ai knowledge status   # ingested domains + chunk counts
+engine-ai knowledge agents   # regenerate the 30 domain-expert subagents
+engine-ai uninstall          # remove from Claude Code (also runs on npm rm -g)
 ```
 
 ---

@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from deploy import deploy_readiness, scaffold  # noqa: E402
 from engine import Engine  # noqa: E402
 from integrations import git_publish, responsive_audit, vercel_deploy  # noqa: E402
+from knowledge import Knowledge  # noqa: E402
 from memory import Memory  # noqa: E402
 from sessions import Sessions  # noqa: E402
 
@@ -30,6 +31,7 @@ PROTOCOL = "2024-11-05"
 ENGINE = Engine()
 MEM = Memory()
 SESS = Sessions()
+KN = Knowledge()
 
 # ----------------------------------------------------------- tool registry
 TOOLS: list[dict] = []
@@ -178,6 +180,29 @@ def _app_resume(a):
       _obj({"path": {"type": "string"}}, ["path"]))
 def _app_find(a):
     return SESS.find(a["path"])
+
+
+@tool("knowledge_ingest", "Clone/ingest an engineering repo (URL or local path) into the domain-tagged knowledge store so domain agents can retrieve it. This is how agents 'master' a domain — by retrieval, not training.",
+      _obj({"source": {"type": "string"}, "domain": {"type": "string"}, "repo": {"type": "string"}}, ["source", "domain"]))
+def _knowledge_ingest(a):
+    return KN.ingest_repo(a["source"], a["domain"], a.get("repo"))
+
+
+@tool("knowledge_search", "Search the ingested engineering knowledge (roadmaps, system design, ML, LLM, build-your-own-x, …), optionally filtered by domain. Returns the most relevant chunks with source.",
+      _obj({"query": {"type": "string"}, "domain": {"type": "string"}, "k": {"type": "integer"}}, ["query"]))
+def _knowledge_search(a):
+    return {"hits": KN.search(a["query"], domain=a.get("domain"), k=int(a.get("k", 6)))}
+
+
+@tool("knowledge_domains", "List the knowledge domains available (and their chunk/repo counts) + ingested sources.", _obj({}))
+def _knowledge_domains(a):
+    return {"domains": KN.domains(), "sources": KN.sources()}
+
+
+@tool("context_pack", "Assemble the FULL context for a task: prior MEMORY (what we've built) + DOMAIN KNOWLEDGE (retrieved expertise) → one blob to feed a build or answer. The 'perfect context' entrypoint.",
+      _obj({"keywords": {"type": "array", "items": {"type": "string"}}, "domain": {"type": "string"}}, ["keywords"]))
+def _context_pack(a):
+    return {"context": KN.context_pack(a["keywords"], domain=a.get("domain"))}
 
 
 # ----------------------------------------------------------- JSON-RPC plumbing
