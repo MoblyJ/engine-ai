@@ -1,6 +1,6 @@
 {
   "name": "engine-ai",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "description": "Supercharge Claude Code in your terminal — build, mobile-check, and ship deployable apps to GitHub + Vercel. One command install, auto-connects.",
   "bin": {
     "engine-ai": "bin/engine-ai.js"
@@ -22,12 +22,29 @@
     "README.md"
   ],
   "keywords": [
-    "claude-code", "claude", "mcp", "coding-agent", "scaffold", "deploy",
-    "vercel", "github", "mobile-responsive", "wsl", "ai"
+    "claude-code",
+    "claude",
+    "mcp",
+    "coding-agent",
+    "scaffold",
+    "deploy",
+    "vercel",
+    "github",
+    "mobile-responsive",
+    "wsl",
+    "ai"
   ],
-  "engines": { "node": ">=18" },
-  "os": [ "linux", "darwin" ],
-  "repository": { "type": "git", "url": "github:MoblyJ/engine-ai" },
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "linux",
+    "darwin"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "github:MoblyJ/engine-ai"
+  },
   "homepage": "https://github.com/MoblyJ/engine-ai#readme",
   "license": "MIT"
 }
