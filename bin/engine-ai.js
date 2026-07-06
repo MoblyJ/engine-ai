@@ -8,6 +8,7 @@ const fs = require("node:fs");
 
 const ROOT = path.resolve(__dirname, "..");
 const SH = path.join(ROOT, "install.sh");
+const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
 
 function have(cmd) {
   return spawnSync(process.platform === "win32" ? "where" : "command", ["-v", cmd],
@@ -65,6 +66,7 @@ switch (cmd) {
   case "doctor": {
     const claude = have("claude"), py = have("python3");
     console.log("engine-ai doctor:");
+    console.log(`  version     : ${PKG.version}`);
     console.log(`  Claude Code : ${claude ? "\x1b[32m✓ found\x1b[0m" : "\x1b[31m✗ missing → npm i -g @anthropic-ai/claude-code\x1b[0m"}`);
     console.log(`  python3     : ${py ? "\x1b[32m✓ found\x1b[0m" : "\x1b[31m✗ missing\x1b[0m"}`);
     console.log(`  package     : ${ROOT}`);

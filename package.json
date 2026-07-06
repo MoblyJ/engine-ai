@@ -7,7 +7,8 @@
   },
   "scripts": {
     "postinstall": "node bin/postinstall.js",
-    "preuninstall": "node bin/preuninstall.js"
+    "preuninstall": "node bin/preuninstall.js",
+    "release": "node scripts/release.js"
   },
   "files": [
     "bin/",

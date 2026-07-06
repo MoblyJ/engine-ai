@@ -85,6 +85,25 @@ claude mcp list        # → engine-ai … ✔ Connected
 > Claude Code session**. Verify with `claude mcp list` (→ `engine-ai … ✔ Connected`) and
 > `engine-ai knowledge status`.
 
+## 🔄 Updates & versioning
+
+`engine-ai` isn't published to the npm registry (the name `engine-ai` is already taken by an
+unrelated package there) — it installs and updates **straight from this GitHub repo's git history**.
+Every meaningful change is version-bumped and tagged (`vX.Y.Z`), so version numbers are real and
+traceable even though there's no registry.
+
+```bash
+npm update -g MoblyJ/engine-ai              # always gets the latest commit on main
+npm install -g MoblyJ/engine-ai#v0.10.1     # pin to one exact tagged release
+```
+
+Check what you have installed: `engine-ai doctor` prints the running version. Browse all releases
+and their notes at https://github.com/MoblyJ/engine-ai/releases or `git tag -l`.
+
+> **Releasing (maintainers):** `npm run release -- <patch|minor|major> "<description>"` bumps
+> `package.json`, commits as `vX.Y.Z: <description>`, tags it, pushes both, and best-effort creates
+> a GitHub Release. Requires a clean tree on `main`, in sync with `origin/main`.
+
 ## 🎮 Use it (inside Claude Code)
 
 | Command | What it does |
