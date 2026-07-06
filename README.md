@@ -93,9 +93,22 @@ Every meaningful change is version-bumped and tagged (`vX.Y.Z`), so version numb
 traceable even though there's no registry.
 
 ```bash
-npm update -g MoblyJ/engine-ai              # always gets the latest commit on main
-npm install -g MoblyJ/engine-ai#v0.10.1     # pin to one exact tagged release
+engine-ai update    # safe update to the latest main — does the uninstall+reinstall dance for you
 ```
+
+Pin to one exact tagged release instead of latest main:
+```bash
+npm uninstall -g engine-ai && npm install -g MoblyJ/engine-ai#v0.10.2
+```
+
+> **Do NOT run `npm update -g engine-ai` or `npm update -g MoblyJ/engine-ai` to update.**
+> `npm update` only resolves package *names* against the **public npm registry** — never a git repo —
+> and the name `engine-ai` is squatted there by a totally unrelated package. Running `npm update -g
+> engine-ai` will silently **replace your real install with that unrelated package**, no warning. It's
+> also not possible to reinstall over an existing git-based install in one step: some npm versions
+> (confirmed on npm 9.2.0/Node 18) fail with `ENOTEMPTY` when reinstalling in place, leaving a broken
+> install (missing package dir, dangling bin symlink) — so always uninstall first, then install fresh.
+> `engine-ai update` does exactly that for you.
 
 Check what you have installed: `engine-ai doctor` prints the running version. Browse all releases
 and their notes at https://github.com/MoblyJ/engine-ai/releases or `git tag -l`.

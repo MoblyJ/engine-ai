@@ -44,6 +44,18 @@ switch (cmd) {
   case "uninstall":
   case "disconnect":
     process.exit(runInstall(["--uninstall"]));
+  case "update": {
+    // NOTE: do NOT use `npm update -g engine-ai` — npm resolves bare package
+    // names against the public registry, never a git repo, and the name
+    // "engine-ai" is squatted there by an unrelated package. Reinstalling a
+    // git-based global package in place also fails with ENOTEMPTY on some
+    // npm versions, so always uninstall first, then install fresh.
+    const spec = ((PKG.repository && PKG.repository.url) || "github:MoblyJ/engine-ai").replace(/^github:/, "");
+    console.log(`Updating engine-ai (uninstall + reinstall from ${spec})…`);
+    spawnSync("npm", ["uninstall", "-g", "engine-ai"], { stdio: "inherit" });
+    const r = spawnSync("npm", ["install", "-g", spec], { stdio: "inherit" });
+    process.exit(r.status || 0);
+  }
   case "knowledge": {
     const sub = (process.argv[3] || "status").toLowerCase();
     if (!have("python3")) { console.error("\x1b[31m✗ python3 not found.\x1b[0m"); process.exit(1); }
@@ -81,6 +93,7 @@ Usage:
   engine-ai connect            wire engine-ai into Claude Code (skills, commands, MCP tools)
   engine-ai connect --import-siblings   also import skills from ../agent-skills ../gstack ../oh-my-pi
   engine-ai uninstall          remove it from Claude Code
+  engine-ai update             safely update to the latest version (uninstall + reinstall)
   engine-ai doctor             check prerequisites + connection status
   engine-ai knowledge sync     clone + ingest the curated engineering repos into the knowledge store
   engine-ai knowledge status   show ingested domains + chunk counts
