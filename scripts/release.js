@@ -117,6 +117,6 @@ try {
 
 console.log(`
 Users get this with:
-  npm update -g MoblyJ/engine-ai              # latest main (now at ${tag})
-  npm install -g MoblyJ/engine-ai#${tag}       # pinned to this exact release
+  engine-ai update                             # latest main (now at ${tag})
+  npm uninstall -g engine-ai && npm install -g MoblyJ/engine-ai#${tag}   # pinned to this exact release
 `);
