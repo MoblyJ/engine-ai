@@ -47,12 +47,40 @@ switch (cmd) {
   case "update": {
     // NOTE: do NOT use `npm update -g engine-ai` — npm resolves bare package
     // names against the public registry, never a git repo, and the name
-    // "engine-ai" is squatted there by an unrelated package. Reinstalling a
-    // git-based global package in place also fails with ENOTEMPTY on some
-    // npm versions, so always uninstall first, then install fresh.
-    const spec = ((PKG.repository && PKG.repository.url) || "github:MoblyJ/engine-ai").replace(/^github:/, "");
-    console.log(`Updating engine-ai (uninstall + reinstall from ${spec})…`);
+    // "engine-ai" is squatted there by an unrelated package.
+    //
+    // Reinstalling a git-based global package IN PLACE is also unreliable:
+    // npm's installer "retires" (renames) the existing package directory to
+    // a temp name while placing the new one. On some filesystems (confirmed
+    // on WSL2/npm 11) that rename races against leftover state from any
+    // prior failed install attempt, producing ENOENT/ENOTEMPTY. Forcibly
+    // clearing the target directory (and any orphaned .engine-ai-* temp
+    // dirs from a previous failed retire) before installing means npm never
+    // has anything to retire — it always installs into an empty slot.
+    const base = ((PKG.repository && PKG.repository.url) || "github:MoblyJ/engine-ai").replace(/^github:/, "");
+    const tag = process.argv[3]; // optional: `engine-ai update v0.10.2` pins to a tag instead of latest main
+    const spec = tag ? `${base}#${tag}` : base;
+    console.log(`Updating engine-ai (clean uninstall + reinstall from ${spec})…`);
+
     spawnSync("npm", ["uninstall", "-g", "engine-ai"], { stdio: "inherit" });
+
+    const prefix = (spawnSync("npm", ["prefix", "-g"], { encoding: "utf8" }).stdout || "").trim();
+    if (prefix) {
+      const globalRoot = path.join(prefix, "lib", "node_modules");
+      const pkgDir = path.join(globalRoot, "engine-ai");
+      if (fs.existsSync(pkgDir)) {
+        console.log(`  removing leftover ${pkgDir}`);
+        fs.rmSync(pkgDir, { recursive: true, force: true });
+      }
+      if (fs.existsSync(globalRoot)) {
+        for (const name of fs.readdirSync(globalRoot)) {
+          if (name.startsWith(".engine-ai-")) fs.rmSync(path.join(globalRoot, name), { recursive: true, force: true });
+        }
+      }
+      const binLink = path.join(prefix, "bin", "engine-ai");
+      try { fs.unlinkSync(binLink); } catch (_) { /* not present */ }
+    }
+
     const r = spawnSync("npm", ["install", "-g", spec], { stdio: "inherit" });
     process.exit(r.status || 0);
   }
@@ -93,7 +121,8 @@ Usage:
   engine-ai connect            wire engine-ai into Claude Code (skills, commands, MCP tools)
   engine-ai connect --import-siblings   also import skills from ../agent-skills ../gstack ../oh-my-pi
   engine-ai uninstall          remove it from Claude Code
-  engine-ai update             safely update to the latest version (uninstall + reinstall)
+  engine-ai update             safely update to the latest version (clean uninstall + reinstall)
+  engine-ai update v0.10.2     safely update, pinned to a specific tagged release
   engine-ai doctor             check prerequisites + connection status
   engine-ai knowledge sync     clone + ingest the curated engineering repos into the knowledge store
   engine-ai knowledge status   show ingested domains + chunk counts
