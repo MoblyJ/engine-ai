@@ -56,9 +56,18 @@ except Exception:
 cmd = f"bash {hook}"
 hooks = cfg.setdefault("hooks", {})
 ss = hooks.setdefault("SessionStart", [])
-# drop any existing entry that references our hook
+# Drop any existing entry that references OUR hook script — matched by the
+# stable "hooks/session-start.sh" suffix, not the full absolute path. The
+# absolute path changes across reinstalls (nvm gives each Node version its
+# own global node_modules dir, and repeated uninstall/reinstall cycles can
+# each land at a different location), so an exact-string match here would
+# never recognize an old install's entry as "ours" and would just keep
+# appending a new one forever, leaving stale entries pointing at directories
+# that no longer exist. This also retroactively cleans up any such stale
+# entries already accumulated in settings.json the next time this runs.
+MARKER = "hooks/session-start.sh"
 def has_ours(group):
-    return any(h.get("command","")==cmd for h in group.get("hooks",[]))
+    return any(MARKER in h.get("command", "") for h in group.get("hooks", []))
 ss = [g for g in ss if not has_ours(g)]
 if action == "add":
     ss.append({"hooks":[{"type":"command","command":cmd}]})
