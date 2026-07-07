@@ -116,7 +116,9 @@ try {
 }
 
 console.log(`
-Users get this with:
-  engine-ai update                             # latest main (now at ${tag})
-  npm uninstall -g engine-ai && npm install -g MoblyJ/engine-ai#${tag}   # pinned to this exact release
+Git tag ${tag} is pushed and released on GitHub — but this does NOT publish to the npm registry.
+${newVersion} isn't installable via 'engine-ai update' / 'npm install -g @okoboji/engine-ai' until
+you publish it, since publishing intentionally requires fresh auth each time (no stored credentials):
+
+  npm publish --access public --otp=<code from your authenticator app>
 `);
