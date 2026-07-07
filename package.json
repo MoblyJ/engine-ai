@@ -6,8 +6,8 @@
     "engine-ai": "bin/engine-ai.js"
   },
   "scripts": {
-    "postinstall": "node bin/postinstall.js",
-    "preuninstall": "node bin/preuninstall.js",
+    "postinstall": "node -e \"require(require('path').join(require('path').dirname(process.env.npm_package_json),'bin','postinstall.js'))\"",
+    "preuninstall": "node -e \"require(require('path').join(require('path').dirname(process.env.npm_package_json),'bin','preuninstall.js'))\"",
     "release": "node scripts/release.js"
   },
   "files": [
