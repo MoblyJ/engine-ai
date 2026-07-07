@@ -13,21 +13,29 @@ engine-ai is ACTIVE. MCP server "engine-ai" tools:
   app sessions (git worktrees): app_create, app_update, app_list, app_resume, app_find
   knowledge swarm: knowledge_ingest, knowledge_search, knowledge_domains, context_pack
   web search: web_search, web_search_status (live, current info — Brave if keyed, else DuckDuckGo)
+  stackoverflow: so_search, so_debug (real-world Q&A; so_debug takes an error/traceback, auto-detects
+    language, returns the top matching questions + accepted/top answers, cited)
 Slash commands: /new-app (isolated worktree build), /resume-app, /mobile-check, /deploy-check,
 /ground, /ship-live, /expert (ask a domain expert grounded in ingested knowledge),
-/research (live web search for current info, cited).
+/research (live web search for current info, cited), /debug (fix a real error via StackOverflow,
+cited, verified).
 Subagents in /agents: engine-orchestrator + engine-{app-builder,mobile,deployer,grounder,memory,
-researcher}, and ~30 domain-<slug> experts (frontend, backend, system-design, machine-learning,
-llm, security…) — every domain expert also has web_search for anything time-sensitive.
+researcher,debugger}, and ~30 domain-<slug> experts (frontend, backend, system-design,
+machine-learning, llm, security…) — every domain expert also has web_search for anything
+time-sensitive. engine-researcher also designs OOP class architecture (Mermaid diagrams,
+precedent-grounded via web_search+so_search) before non-trivial builds; engine-debugger fixes real
+errors via so_debug, grounded in cited StackOverflow answers, and verifies the fix actually passes.
 RULE — grounding/research agents run FIRST, always, before writing, planning, or executing any
 code: recall memory (memory_context/memory_recall), ground in the real repo (index_repo/
 search_repo or engine-grounder), and research anything time-sensitive (web_search or
 engine-researcher) BEFORE the first line of a plan or a diff. Never start implementation before
-that context is assembled.
+that context is assembled. For non-trivial new modules, design the OOP class structure (diagram)
+before writing code — no duplicate logic, single responsibility per class, small composable pieces.
 FLOW: for any build/answer, first call context_pack(keywords) to assemble prior MEMORY + retrieved
 DOMAIN KNOWLEDGE (call web_search too if part of the task is time-sensitive), then act, then
-memory_save. Building an app? Follow the deployable-app skill and finish only when tests pass,
-deploy_readiness=100, and the container answers /healthz.
+memory_save. Hit a real error? so_debug(error_text) before guessing at a fix. Building an app?
+Follow the deployable-app skill and finish only when tests pass, deploy_readiness=100, and the
+container answers /healthz.
 EOF
 
 if command -v jq >/dev/null 2>&1; then

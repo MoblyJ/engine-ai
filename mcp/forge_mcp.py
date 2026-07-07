@@ -10,6 +10,7 @@ stdin/stdout (newline-delimited JSON) and exposes the toolkit as callable tools:
   deploy_readiness                   — what a project still needs to be deployable
   scaffold_app                       — write a deployable skeleton (node-api/python-api/static)
   web_search, web_search_status      — live web search (current info beyond the offline knowledge store)
+  so_search, so_debug                — StackOverflow Q&A search + error-message debugging, cited
 
 Pure standard library — no pip install required.
 """
@@ -28,6 +29,7 @@ import experts as _experts  # noqa: E402
 from knowledge import Knowledge  # noqa: E402
 from memory import Memory  # noqa: E402
 from sessions import Sessions  # noqa: E402
+from stackoverflow import StackOverflowClient  # noqa: E402
 from websearch import WebSearch  # noqa: E402
 
 PROTOCOL = "2024-11-05"
@@ -36,6 +38,7 @@ MEM = Memory()
 SESS = Sessions()
 KN = Knowledge()
 WS = WebSearch(get_secret=ENGINE.get_secret)
+SO = StackOverflowClient(get_secret=ENGINE.get_secret)
 
 # ----------------------------------------------------------- tool registry
 TOOLS: list[dict] = []
@@ -224,6 +227,18 @@ def _web_search(a):
 @tool("web_search_status", "Check which web_search provider is active (brave vs duckduckgo) and whether a Brave API key is configured for higher-quality results.", _obj({}))
 def _web_search_status(a):
     return WS.status()
+
+
+@tool("so_search", "Search StackOverflow for real-world Q&A on a topic (design precedent, 'how do others solve X', library usage). Optionally filter by tag (e.g. 'python'). Higher quota with a STACKOVERFLOW_API_KEY secret set (set_secret), works without one too. Returns title/link/score/tags/question_id per hit.",
+      _obj({"query": {"type": "string"}, "tagged": {"type": "string"}, "k": {"type": "integer"}}, ["query"]))
+def _so_search(a):
+    return {"hits": SO.search_questions(a["query"], tagged=a.get("tagged"), k=int(a.get("k", 5)))}
+
+
+@tool("so_debug", "Given an error message or full traceback, find the most relevant StackOverflow questions and each one's top-voted/accepted answer — ready-to-cite fixes for debugging. Auto-detects the language (python/javascript/java/go/rust) from the traceback format for better relevance; pass `language` to override.",
+      _obj({"error_text": {"type": "string"}, "language": {"type": "string"}, "k": {"type": "integer"}}, ["error_text"]))
+def _so_debug(a):
+    return {"hits": SO.debug(a["error_text"], language=a.get("language"), k=int(a.get("k", 5)))}
 
 
 # ----------------------------------------------------------- JSON-RPC plumbing

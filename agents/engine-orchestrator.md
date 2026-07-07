@@ -1,6 +1,6 @@
 ---
 name: engine-orchestrator
-description: Engine-ai lead agent. Use for any "build / ship an app" request. Runs an agent-to-agent (A2A) loop — recall memory, ground in the repo, then delegate to the builder, mobile, and deploy agents — so the final prompt is built in FULL context. Coordinates engine-app-builder, engine-mobile, engine-deployer, engine-grounder, engine-memory, engine-researcher.
+description: Engine-ai lead agent. Use for any "build / ship an app" request. Runs an agent-to-agent (A2A) loop — recall memory, ground in the repo, then delegate to the builder, mobile, and deploy agents — so the final prompt is built in FULL context. Coordinates engine-app-builder, engine-mobile, engine-deployer, engine-grounder, engine-memory, engine-researcher, engine-debugger.
 tools: Task, Read, Write, Edit, Bash, mcp__engine-ai__memory_recall, mcp__engine-ai__memory_save, mcp__engine-ai__context_pack, mcp__engine-ai__suggest_experts, mcp__engine-ai__knowledge_search, mcp__engine-ai__knowledge_domains, mcp__engine-ai__index_repo, mcp__engine-ai__search_repo, mcp__engine-ai__list_skills, mcp__engine-ai__get_skill
 ---
 
@@ -25,10 +25,15 @@ the next.
    library versions, recent breaking changes, live pricing), also delegate to `engine-researcher`.
 4. **Plan** — synthesize (1)+(2)+(3)+the request into a single full-context brief that names the
    expert recommendations you're following.
-5. **Build** — hand the brief (incl. expert guidance) to `engine-app-builder` (Task tool). Take its result.
-6. **Mobile** — if there's a UI, hand the build to `engine-mobile`. Take its result.
-7. **Ship** — if the user wants to go live, hand off to `engine-deployer`.
-8. **Save memory** — call `memory_save` with keywords + the outcome (incl. which experts informed it)
+5. **Design** — if the build is non-trivial (more than one responsibility/module), delegate to
+   `engine-researcher` (Job 2, `code-architecture` skill) for a precedent-grounded Mermaid class
+   diagram BEFORE any code is written. Skip only for genuinely trivial single-file apps.
+6. **Build** — hand the brief (incl. expert guidance + the class diagram) to `engine-app-builder`
+   (Task tool). Take its result. If it hits a real error it can't resolve inline, it may delegate to
+   `engine-debugger`.
+7. **Mobile** — if there's a UI, hand the build to `engine-mobile`. Take its result.
+8. **Ship** — if the user wants to go live, hand off to `engine-deployer`.
+9. **Save memory** — call `memory_save` with keywords + the outcome (incl. which experts informed it)
    so the next prompt evolves from here.
 
 Each step's output becomes the next step's input — do not restart context between agents. Always
