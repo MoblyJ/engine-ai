@@ -7,6 +7,15 @@ const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 const fs = require("node:fs");
 
+// If the process's cwd was invalidated (e.g. npm renamed/removed the directory
+// it launched this script from mid-install — a real, reproduced cause of
+// `ENOENT uv_cwd` under `npm install -g`), move somewhere guaranteed to exist
+// before doing anything else. Every path below is anchored to __dirname/ROOT
+// regardless, but Node's child_process.spawn() implicitly calls process.cwd()
+// to inherit a cwd for any spawn that doesn't pass one explicitly, so an
+// invalid process cwd can break spawns that otherwise have nothing to do with it.
+try { process.cwd(); } catch (_) { try { process.chdir(__dirname); } catch (_) { /* best effort */ } }
+
 // Skip during local dev installs of the package's own devDeps / CI, if flagged.
 if (process.env.ENGINE_AI_SKIP_POSTINSTALL) process.exit(0);
 
@@ -29,7 +38,7 @@ function have(cmd) {
 // Runs on every exit path, not just the happy path, since it's an orthogonal concern.
 function warnIfPathMissing() {
   try {
-    const prefix = (spawnSync("npm", ["prefix", "-g"], { encoding: "utf8" }).stdout || "").trim();
+    const prefix = (spawnSync("npm", ["prefix", "-g"], { cwd: ROOT, encoding: "utf8" }).stdout || "").trim();
     const binDir = prefix ? path.join(prefix, "bin") : "";
     if (!binDir) return;
     const norm = (p) => (p || "").replace(/[\\/]+$/, "");
@@ -47,31 +56,43 @@ function warnIfPathMissing() {
   } catch (_) { /* ignore */ }
 }
 
-console.log("\n\x1b[36m◈ engine-ai\x1b[0m — connecting to Claude Code…");
+function main() {
+  console.log("\n\x1b[36m◈ engine-ai\x1b[0m — connecting to Claude Code…");
 
-if (!have("claude")) {
-  console.log(`
+  if (!have("claude")) {
+    console.log(`
 \x1b[33m! Claude Code not found — engine-ai is installed but not yet connected.\x1b[0m
   Install Claude Code, then run  \x1b[1mengine-ai connect\x1b[0m :
 
       npm install -g @anthropic-ai/claude-code
       engine-ai connect
 `);
+    warnIfPathMissing();
+    return;
+  }
+  if (!have("python3")) {
+    console.log("\x1b[33m! python3 not found — install Python 3, then run: engine-ai connect\x1b[0m");
+    warnIfPathMissing();
+    return;
+  }
+
+  const status = spawnSync("bash", [path.join(ROOT, "install.sh")], { cwd: ROOT, stdio: "inherit" }).status;
+  if (status === 0) {
+    console.log("\n\x1b[32m✓ engine-ai connected.\x1b[0m Open a NEW Claude Code session and try  /new-app\n");
+  } else {
+    console.log("\n\x1b[33m! auto-connect didn't finish — run  engine-ai connect  to retry.\x1b[0m\n");
+  }
+
   warnIfPathMissing();
-  process.exit(0); // do not fail npm install
-}
-if (!have("python3")) {
-  console.log("\x1b[33m! python3 not found — install Python 3, then run: engine-ai connect\x1b[0m");
-  warnIfPathMissing();
-  process.exit(0);
 }
 
-const status = spawnSync("bash", [path.join(ROOT, "install.sh")], { cwd: ROOT, stdio: "inherit" }).status;
-if (status === 0) {
-  console.log("\n\x1b[32m✓ engine-ai connected.\x1b[0m Open a NEW Claude Code session and try  /new-app\n");
-} else {
-  console.log("\n\x1b[33m! auto-connect didn't finish — run  engine-ai connect  to retry.\x1b[0m\n");
+// Nothing above this call is allowed to fail the install: any unexpected
+// exception is caught, logged, and swallowed so `npm install -g` always
+// finishes successfully — connection issues are always recoverable with
+// `engine-ai connect` afterward.
+try {
+  main();
+} catch (e) {
+  console.log(`\x1b[33m! engine-ai postinstall hit an unexpected error (install still succeeded): ${(e && e.message) || e}\x1b[0m\n  Run  engine-ai connect  to finish wiring it up.\n`);
 }
-
-warnIfPathMissing();
 process.exit(0); // always succeed the install

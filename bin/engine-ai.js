@@ -5,6 +5,7 @@
 const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 const fs = require("node:fs");
+const os = require("node:os");
 
 const ROOT = path.resolve(__dirname, "..");
 const SH = path.join(ROOT, "install.sh");
@@ -32,9 +33,37 @@ Then connect engine-ai:
 `);
 }
 
+function cmd_help() {
+  console.log(`engine-ai — Claude Code toolkit
+
+Usage:
+  engine-ai connect            wire engine-ai into Claude Code (skills, commands, MCP tools)
+  engine-ai connect --import-siblings   also import skills from ../agent-skills ../gstack ../oh-my-pi
+  engine-ai uninstall          remove it from Claude Code
+  engine-ai update             safely update to the latest version (clean uninstall + reinstall)
+  engine-ai update v0.10.2     safely update, pinned to a specific tagged release
+  engine-ai doctor             check prerequisites + connection status
+  engine-ai knowledge sync     clone + ingest the curated engineering repos into the knowledge store
+  engine-ai knowledge status   show ingested domains + chunk counts
+  engine-ai knowledge agents   regenerate the domain-expert subagents
+  engine-ai --version          print the installed version
+  engine-ai --help             show this message
+
+After connecting, open a NEW Claude Code session and try:  /new-app · /expert · /resume-app · /ship-live`);
+}
+
 const cmd = (process.argv[2] || "help").toLowerCase();
 
 switch (cmd) {
+  case "--version":
+  case "-v":
+  case "version":
+    console.log(PKG.version);
+    process.exit(0);
+  case "--help":
+  case "-h":
+    cmd_help();
+    process.exit(0);
   case "connect":
   case "install": {
     if (!have("claude")) { claudeMissingMessage(); process.exit(1); }
@@ -62,9 +91,15 @@ switch (cmd) {
     const spec = tag ? `${base}#${tag}` : base;
     console.log(`Updating engine-ai (clean uninstall + reinstall from ${spec})…`);
 
-    spawnSync("npm", ["uninstall", "-g", "engine-ai"], { stdio: "inherit" });
+    // Deliberately NOT cwd: ROOT here — `pkgDir` below (the directory this
+    // command is about to delete) IS ROOT for a global install, so anchoring
+    // these spawns to a directory they're about to remove out from under
+    // themselves is exactly the self-inflicted cwd hazard this whole file is
+    // now defended against elsewhere. os.tmpdir() is stable and unrelated.
+    const safeCwd = os.tmpdir();
+    spawnSync("npm", ["uninstall", "-g", "engine-ai"], { cwd: safeCwd, stdio: "inherit" });
 
-    const prefix = (spawnSync("npm", ["prefix", "-g"], { encoding: "utf8" }).stdout || "").trim();
+    const prefix = (spawnSync("npm", ["prefix", "-g"], { cwd: safeCwd, encoding: "utf8" }).stdout || "").trim();
     if (prefix) {
       const globalRoot = path.join(prefix, "lib", "node_modules");
       const pkgDir = path.join(globalRoot, "engine-ai");
@@ -81,7 +116,7 @@ switch (cmd) {
       try { fs.unlinkSync(binLink); } catch (_) { /* not present */ }
     }
 
-    const r = spawnSync("npm", ["install", "-g", spec], { stdio: "inherit" });
+    const r = spawnSync("npm", ["install", "-g", spec], { cwd: safeCwd, stdio: "inherit" });
     process.exit(r.status || 0);
   }
   case "knowledge": {
@@ -115,19 +150,6 @@ switch (cmd) {
     process.exit(claude && py ? 0 : 1);
   }
   default:
-    console.log(`engine-ai — Claude Code toolkit
-
-Usage:
-  engine-ai connect            wire engine-ai into Claude Code (skills, commands, MCP tools)
-  engine-ai connect --import-siblings   also import skills from ../agent-skills ../gstack ../oh-my-pi
-  engine-ai uninstall          remove it from Claude Code
-  engine-ai update             safely update to the latest version (clean uninstall + reinstall)
-  engine-ai update v0.10.2     safely update, pinned to a specific tagged release
-  engine-ai doctor             check prerequisites + connection status
-  engine-ai knowledge sync     clone + ingest the curated engineering repos into the knowledge store
-  engine-ai knowledge status   show ingested domains + chunk counts
-  engine-ai knowledge agents   regenerate the domain-expert subagents
-
-After connecting, open a NEW Claude Code session and try:  /new-app · /expert · /resume-app · /ship-live`);
+    cmd_help();
     process.exit(0);
 }
