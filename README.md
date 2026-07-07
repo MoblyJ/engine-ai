@@ -41,41 +41,29 @@ mobile responsiveness, and ships it to **GitHub + Vercel**.
 ## 🚀 Install (one command)
 
 ```bash
-GR="$(npm root -g)"; GP="$(npm prefix -g)"
-for i in 1 2 3; do
-  rm -rf "$GR/engine-ai" "$GR"/.engine-ai-* "$GP/bin/engine-ai" 2>/dev/null
-  npm install -g MoblyJ/engine-ai --ignore-scripts && break
-  echo "attempt $i failed — retrying…"; sleep 2
-done
-grep -qxF "export PATH=\"$GP/bin:\$PATH\"" ~/.bashrc || echo "export PATH=\"$GP/bin:\$PATH\"" >> ~/.bashrc
-export PATH="$GP/bin:$PATH"
-engine-ai connect
-engine-ai doctor
+npm install -g @okoboji/engine-ai
 ```
 
-That's it — `engine-ai connect` **detects Claude Code and connects itself**. Then **open a new Claude
-Code session**.
+That's it — the installer **auto-detects Claude Code and connects itself**. Then **open a new Claude
+Code session**. If `engine-ai: command not found` afterward, see the PATH note further down.
 
-> **Why the extra steps, not just `npm install -g MoblyJ/engine-ai`?** Global installs of git-hosted
-> npm packages can hit a real, reproducible npm race on some filesystems (confirmed on WSL2, npm 11):
-> npm's own lifecycle-script runner always spawns with `cwd` set to the target install directory
-> before it's guaranteed to be fully in place, failing with `ENOENT` — this has been observed under at
-> least three different disguises (`spawn sh`, `spawn dash`, `uv_cwd`) depending on npm/shell config,
-> and it happens inside npm's own internal spawn call regardless of what's in `package.json`'s
-> `scripts`, so it can't be fixed from inside the package. `--ignore-scripts` skips npm's lifecycle-
-> script step entirely (the `engine-ai` binary itself still gets placed/linked normally — that's not a
-> lifecycle script), and `engine-ai connect` does the Claude Code wiring directly afterward, once the
-> directory is no longer mid-install. Clearing stale directory state and retrying a couple of times
-> covers a separate, narrower race in npm's own directory placement. The `PATH` lines fix the separate,
-> unrelated `engine-ai: command not found` issue some shells hit even after a successful install.
+> **Published under `@okoboji/engine-ai`, not `engine-ai`** — the bare name `engine-ai` is already
+> taken on the npm registry by an unrelated package. This is also a real **npm registry** package now
+> (not a git-hosted install), which matters: an earlier version of this README documented a much more
+> involved bootstrap command (directory-clearing, retry loops, `--ignore-scripts`) to work around a
+> real, reproducible npm race specific to **git-dependency** installs on some filesystems (confirmed on
+> WSL2, npm 11) — npm's own lifecycle-script runner would intermittently fail with `ENOENT` under
+> several disguises (`spawn sh`, `spawn dash`, `uv_cwd`) while preparing a git-cloned package. Plain
+> registry installs use npm's much more standard download-and-extract path and have not reproduced that
+> race in testing, so the simple one-liner above is enough.
 
-**Or from a git clone (same full feature set):**
+**Or from a git clone (same full feature set, if you want to build from source):**
 ```bash
 git clone https://github.com/MoblyJ/engine-ai.git && cd engine-ai
 npm install        # runs the auto-connect  (or:  ./install.sh)
 ```
 
-> **Both paths install every feature locally** — all MCP tools, skills, the `/agents` subagents, the
+> **All paths install every feature locally** — all MCP tools, skills, the `/agents` subagents, the
 > commands, the hook, and the memory engine. Your memory pockets live in `~/.engine-ai/memory.db` and
 > grow as you use it. Nothing is cloud-only; everything runs on your machine.
 
@@ -109,34 +97,31 @@ claude mcp list        # → engine-ai … ✔ Connected
 
 ## 🔄 Updates & versioning
 
-`engine-ai` isn't published to the npm registry (the name `engine-ai` is already taken by an
-unrelated package there) — it installs and updates **straight from this GitHub repo's git history**.
-Every meaningful change is version-bumped and tagged (`vX.Y.Z`), so version numbers are real and
-traceable even though there's no registry.
+`engine-ai` is published to the npm registry as **`@okoboji/engine-ai`** (the bare name `engine-ai` is
+taken there by an unrelated package, hence the scope). Every meaningful change is version-bumped,
+tagged in git (`vX.Y.Z`), and published as a new registry version, so version numbers are real,
+traceable, and installable both ways.
 
 ```bash
-engine-ai update            # latest main
-engine-ai update v0.10.2    # pin to one exact tagged release
+engine-ai update            # latest published version
+engine-ai update 0.13.1     # pin to one exact published version
 ```
 
-> **Do NOT run `npm update -g engine-ai` or `npm update -g MoblyJ/engine-ai` to update.**
-> `npm update` only resolves package *names* against the **public npm registry** — never a git repo —
-> and the name `engine-ai` is squatted there by a totally unrelated package. Running `npm update -g
-> engine-ai` will silently **replace your real install with that unrelated package**, no warning.
->
-> Reinstalling a git-based global package in place is also unreliable on its own: npm renames the old
-> package directory out of the way while placing the new one, and on some filesystems (confirmed on
-> WSL2) that rename races against leftover state from any earlier failed install, causing `ENOENT` or
-> `ENOTEMPTY` errors and a broken install. `engine-ai update` avoids this by forcibly clearing the
-> target directory (and any orphaned temp dirs from a previous failed attempt) before reinstalling, so
-> there's nothing left for npm to rename — every update installs into a clean, empty slot.
+`npm update -g @okoboji/engine-ai` and `npm install -g @okoboji/engine-ai@latest` also work correctly
+now — this is a real, legitimately-owned registry package, not a squatted name. `engine-ai update` is
+still the recommended path since it does a full clean uninstall + reinstall, which is slightly more
+reliable than an in-place update on some filesystems.
 
 Check what you have installed: `engine-ai doctor` prints the running version. Browse all releases
-and their notes at https://github.com/MoblyJ/engine-ai/releases or `git tag -l`.
+and their notes at https://github.com/MoblyJ/engine-ai/releases, `git tag -l`, or
+https://www.npmjs.com/package/@okoboji/engine-ai.
 
 > **Releasing (maintainers):** `npm run release -- <patch|minor|major> "<description>"` bumps
 > `package.json`, commits as `vX.Y.Z: <description>`, tags it, pushes both, and best-effort creates
-> a GitHub Release. Requires a clean tree on `main`, in sync with `origin/main`.
+> a GitHub Release. Requires a clean tree on `main`, in sync with `origin/main`. It does **not**
+> publish to the npm registry automatically — that still requires `npm publish --access public` with
+> either a live OTP (`--otp=<code>`) or an authenticated token, since publishing isn't automated with
+> stored credentials on this machine by design.
 
 ## 🎮 Use it (inside Claude Code)
 

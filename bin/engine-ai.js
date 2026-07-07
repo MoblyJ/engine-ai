@@ -41,7 +41,7 @@ Usage:
   engine-ai connect --import-siblings   also import skills from ../agent-skills ../gstack ../oh-my-pi
   engine-ai uninstall          remove it from Claude Code
   engine-ai update             safely update to the latest version (clean uninstall + reinstall)
-  engine-ai update v0.10.2     safely update, pinned to a specific tagged release
+  engine-ai update 0.13.0      safely update, pinned to a specific published version
   engine-ai doctor             check prerequisites + connection status
   engine-ai knowledge sync     clone + ingest the curated engineering repos into the knowledge store
   engine-ai knowledge status   show ingested domains + chunk counts
@@ -74,22 +74,16 @@ switch (cmd) {
   case "disconnect":
     process.exit(runInstall(["--uninstall"]));
   case "update": {
-    // NOTE: do NOT use `npm update -g engine-ai` — npm resolves bare package
-    // names against the public registry, never a git repo, and the name
-    // "engine-ai" is squatted there by an unrelated package.
-    //
-    // Reinstalling a git-based global package IN PLACE is also unreliable:
-    // npm's installer "retires" (renames) the existing package directory to
-    // a temp name while placing the new one. On some filesystems (confirmed
-    // on WSL2/npm 11) that rename races against leftover state from any
-    // prior failed install attempt, producing ENOENT/ENOTEMPTY. Forcibly
-    // clearing the target directory (and any orphaned .engine-ai-* temp
-    // dirs from a previous failed retire) before installing means npm never
-    // has anything to retire — it always installs into an empty slot.
-    const base = ((PKG.repository && PKG.repository.url) || "github:MoblyJ/engine-ai").replace(/^github:/, "");
-    const tag = process.argv[3]; // optional: `engine-ai update v0.10.2` pins to a tag instead of latest main
-    const spec = tag ? `${base}#${tag}` : base;
-    console.log(`Updating engine-ai (clean uninstall + reinstall from ${spec})…`);
+    // Published to the npm registry as the scoped package @okoboji/engine-ai
+    // (the bare name "engine-ai" is squatted there by an unrelated package).
+    // A full clean uninstall + reinstall (rather than `npm update -g`, or
+    // reinstalling in place) remains the most reliable way to guarantee the
+    // latest files land — this also mirrors the same defensive pattern used
+    // when this package was git-based, kept here as cheap insurance.
+    const NAME = "@okoboji/engine-ai";
+    const version = process.argv[3]; // optional: `engine-ai update 0.13.0` pins to a specific published version
+    const spec = version ? `${NAME}@${version}` : `${NAME}@latest`;
+    console.log(`Updating engine-ai (clean uninstall + reinstall ${spec})…`);
 
     // Deliberately NOT cwd: ROOT here — `pkgDir` below (the directory this
     // command is about to delete) IS ROOT for a global install, so anchoring
@@ -97,34 +91,23 @@ switch (cmd) {
     // themselves is exactly the self-inflicted cwd hazard this whole file is
     // now defended against elsewhere. os.tmpdir() is stable and unrelated.
     const safeCwd = os.tmpdir();
-    spawnSync("npm", ["uninstall", "-g", "engine-ai"], { cwd: safeCwd, stdio: "inherit" });
+    spawnSync("npm", ["uninstall", "-g", NAME], { cwd: safeCwd, stdio: "inherit" });
 
     const prefix = (spawnSync("npm", ["prefix", "-g"], { cwd: safeCwd, encoding: "utf8" }).stdout || "").trim();
     if (prefix) {
-      const globalRoot = path.join(prefix, "lib", "node_modules");
-      const pkgDir = path.join(globalRoot, "engine-ai");
+      const pkgDir = path.join(prefix, "lib", "node_modules", "@okoboji", "engine-ai");
       if (fs.existsSync(pkgDir)) {
         console.log(`  removing leftover ${pkgDir}`);
         fs.rmSync(pkgDir, { recursive: true, force: true });
-      }
-      if (fs.existsSync(globalRoot)) {
-        for (const name of fs.readdirSync(globalRoot)) {
-          if (name.startsWith(".engine-ai-")) fs.rmSync(path.join(globalRoot, name), { recursive: true, force: true });
-        }
       }
       const binLink = path.join(prefix, "bin", "engine-ai");
       try { fs.unlinkSync(binLink); } catch (_) { /* not present */ }
     }
 
-    // --ignore-scripts: npm's own lifecycle-script runner always spawns with
-    // cwd set to the target install directory, regardless of what command is
-    // in package.json's "scripts" — and on some filesystems (confirmed on
-    // WSL2/npm 11) that spawn itself races against the directory still being
-    // written, failing with ENOENT under several different disguises (spawn
-    // sh, spawn dash, uv_cwd) no matter what the lifecycle script contains.
-    // Skipping lifecycle scripts entirely and running connect ourselves,
-    // afterward, once the directory is no longer mid-install, sidesteps the
-    // race completely rather than chasing its next disguise.
+    // --ignore-scripts + explicit connect afterward: registry installs (as
+    // opposed to the git-dependency installs this package used to use) have
+    // NOT reproduced the ENOENT/uv_cwd lifecycle-script race seen before, but
+    // this pattern is cheap insurance and costs nothing to keep.
     const r = spawnSync("npm", ["install", "-g", spec, "--ignore-scripts"], { cwd: safeCwd, stdio: "inherit" });
     if (r.status !== 0) process.exit(r.status || 1);
     process.exit(runInstall([]));

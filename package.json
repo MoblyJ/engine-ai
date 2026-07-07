@@ -1,9 +1,12 @@
 {
-  "name": "engine-ai",
+  "name": "@okoboji/engine-ai",
   "version": "0.13.1",
   "description": "Supercharge Claude Code in your terminal — build, mobile-check, and ship deployable apps to GitHub + Vercel. One command install, auto-connects.",
   "bin": {
     "engine-ai": "bin/engine-ai.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "postinstall": "node -e \"require(require('path').join(require('path').dirname(process.env.npm_package_json),'bin','postinstall.js'))\"",
