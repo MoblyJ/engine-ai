@@ -116,8 +116,18 @@ switch (cmd) {
       try { fs.unlinkSync(binLink); } catch (_) { /* not present */ }
     }
 
-    const r = spawnSync("npm", ["install", "-g", spec], { cwd: safeCwd, stdio: "inherit" });
-    process.exit(r.status || 0);
+    // --ignore-scripts: npm's own lifecycle-script runner always spawns with
+    // cwd set to the target install directory, regardless of what command is
+    // in package.json's "scripts" — and on some filesystems (confirmed on
+    // WSL2/npm 11) that spawn itself races against the directory still being
+    // written, failing with ENOENT under several different disguises (spawn
+    // sh, spawn dash, uv_cwd) no matter what the lifecycle script contains.
+    // Skipping lifecycle scripts entirely and running connect ourselves,
+    // afterward, once the directory is no longer mid-install, sidesteps the
+    // race completely rather than chasing its next disguise.
+    const r = spawnSync("npm", ["install", "-g", spec, "--ignore-scripts"], { cwd: safeCwd, stdio: "inherit" });
+    if (r.status !== 0) process.exit(r.status || 1);
+    process.exit(runInstall([]));
   }
   case "knowledge": {
     const sub = (process.argv[3] || "status").toLowerCase();

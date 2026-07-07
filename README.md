@@ -44,23 +44,30 @@ mobile responsiveness, and ships it to **GitHub + Vercel**.
 GR="$(npm root -g)"; GP="$(npm prefix -g)"
 for i in 1 2 3; do
   rm -rf "$GR/engine-ai" "$GR"/.engine-ai-* "$GP/bin/engine-ai" 2>/dev/null
-  npm install -g MoblyJ/engine-ai && break
+  npm install -g MoblyJ/engine-ai --ignore-scripts && break
   echo "attempt $i failed — retrying…"; sleep 2
 done
 grep -qxF "export PATH=\"$GP/bin:\$PATH\"" ~/.bashrc || echo "export PATH=\"$GP/bin:\$PATH\"" >> ~/.bashrc
 export PATH="$GP/bin:$PATH"
+engine-ai connect
 engine-ai doctor
 ```
 
-That's it — the installer **auto-detects Claude Code and connects itself**. Then **open a new Claude
+That's it — `engine-ai connect` **detects Claude Code and connects itself**. Then **open a new Claude
 Code session**.
 
 > **Why the extra steps, not just `npm install -g MoblyJ/engine-ai`?** Global installs of git-hosted
-> npm packages can hit a real, reproducible npm race on some filesystems (confirmed on WSL2): an
-> internal npm step spawns a shell against the target install directory before it's fully in place,
-> failing with `ENOENT`/`ENOTEMPTY`. Clearing that directory first and retrying a couple of times
-> works around it reliably. The `PATH` lines fix the separate, unrelated `engine-ai: command not
-> found` issue some shells hit even after a successful install.
+> npm packages can hit a real, reproducible npm race on some filesystems (confirmed on WSL2, npm 11):
+> npm's own lifecycle-script runner always spawns with `cwd` set to the target install directory
+> before it's guaranteed to be fully in place, failing with `ENOENT` — this has been observed under at
+> least three different disguises (`spawn sh`, `spawn dash`, `uv_cwd`) depending on npm/shell config,
+> and it happens inside npm's own internal spawn call regardless of what's in `package.json`'s
+> `scripts`, so it can't be fixed from inside the package. `--ignore-scripts` skips npm's lifecycle-
+> script step entirely (the `engine-ai` binary itself still gets placed/linked normally — that's not a
+> lifecycle script), and `engine-ai connect` does the Claude Code wiring directly afterward, once the
+> directory is no longer mid-install. Clearing stale directory state and retrying a couple of times
+> covers a separate, narrower race in npm's own directory placement. The `PATH` lines fix the separate,
+> unrelated `engine-ai: command not found` issue some shells hit even after a successful install.
 
 **Or from a git clone (same full feature set):**
 ```bash
