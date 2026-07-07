@@ -9,6 +9,7 @@ stdin/stdout (newline-delimited JSON) and exposes the toolkit as callable tools:
   set_secret, list_secrets           — encrypted secrets vault
   deploy_readiness                   — what a project still needs to be deployable
   scaffold_app                       — write a deployable skeleton (node-api/python-api/static)
+  web_search, web_search_status      — live web search (current info beyond the offline knowledge store)
 
 Pure standard library — no pip install required.
 """
@@ -27,12 +28,14 @@ import experts as _experts  # noqa: E402
 from knowledge import Knowledge  # noqa: E402
 from memory import Memory  # noqa: E402
 from sessions import Sessions  # noqa: E402
+from websearch import WebSearch  # noqa: E402
 
 PROTOCOL = "2024-11-05"
 ENGINE = Engine()
 MEM = Memory()
 SESS = Sessions()
 KN = Knowledge()
+WS = WebSearch(get_secret=ENGINE.get_secret)
 
 # ----------------------------------------------------------- tool registry
 TOOLS: list[dict] = []
@@ -210,6 +213,17 @@ def _context_pack(a):
       _obj({"request": {"type": "string"}, "k": {"type": "integer"}}, ["request"]))
 def _suggest_experts(a):
     return _experts.suggest(a["request"], k=int(a.get("k", 3)), knowledge=KN)
+
+
+@tool("web_search", "Live web search for current, real-time information the offline knowledge store can't have (recent releases, current docs/pricing, breaking changes, news). Uses Brave Search if a BRAVE_API_KEY secret is set (set_secret), else falls back to DuckDuckGo — no key required either way. Returns title/url/snippet hits.",
+      _obj({"query": {"type": "string"}, "k": {"type": "integer"}}, ["query"]))
+def _web_search(a):
+    return {"hits": WS.search(a["query"], k=int(a.get("k", 5))), "provider": WS.status()["active_provider"]}
+
+
+@tool("web_search_status", "Check which web_search provider is active (brave vs duckduckgo) and whether a Brave API key is configured for higher-quality results.", _obj({}))
+def _web_search_status(a):
+    return WS.status()
 
 
 # ----------------------------------------------------------- JSON-RPC plumbing

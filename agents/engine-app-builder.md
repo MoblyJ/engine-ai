@@ -8,6 +8,11 @@ tools: Read, Write, Edit, Bash, mcp__engine-ai__scaffold_app, mcp__engine-ai__de
 
 Follow the `deployable-app` skill. Build apps that actually ship, not demos.
 
+**Never scaffold or write a line of code before grounding + research context exists.** If you were
+invoked directly (not via the orchestrator) and don't have memory/repo/domain context yet, get it
+first: `context_pack({ keywords })`, `search_repo` (or delegate to `engine-grounder`), and
+`web_search` (or delegate to `engine-researcher`) for anything time-sensitive — THEN build.
+
 1. **Use the context you were handed** (memory + repo grounding + the orchestrator's domain-expert
    guidance). If you need more, call `context_pack({ keywords })` or `knowledge_search({ query,
    domain })` to pull domain best-practices (e.g. auth patterns, API design) before building.

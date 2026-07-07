@@ -135,6 +135,7 @@ https://www.npmjs.com/package/@okoboji/engine-ai.
 | `/ship-live` | **Session-aware** ship: publish the app's worktree/branch to **GitHub** + **Vercel**, verify the URL, record it back to the session |
 | `/expert <question>` | Ask one of **30 domain experts** (frontend, system-design, ML, LLM, security…) — grounded in **ingested engineering knowledge** + memory |
 | `/knowledge [query]` | **Browse & search** the ingested knowledge store — domains, sources, full-text search with citations |
+| `/research <question>` | **Live web search** for current, real-time info the offline knowledge store can't have — cites sources, saves findings to memory |
 
 Or just talk to it: *"build a responsive coffee-shop landing page, then ship it live."*
 
@@ -156,25 +157,27 @@ flowchart LR
 <table>
 <tr><td valign="top">
 
-**Slash commands** (8)
+**Slash commands** (9)
 `/new-app` · `/resume-app` · `/expert`
 `/knowledge` · `/mobile-check`
 `/deploy-check` · `/ground` · `/ship-live`
+`/research`
 
-**Agents** — in `/agents` (36)
-`engine-orchestrator` + 5 engine agents
+**Agents** — in `/agents` (37)
+`engine-orchestrator` + 6 engine agents
 `engine-{app-builder,mobile,deployer,`
-`grounder,memory}` · **30 `domain-*`**
-**experts** (frontend, system-design,
-ml, llm, security, …)
+`grounder,memory,researcher}` · **30**
+**`domain-*` experts** (frontend,
+system-design, ml, llm, security, …)
 
-**Skills** — auto-triggered (4)
+**Skills** — auto-triggered (5)
 `deployable-app` · `mobile-responsive`
 `publish-and-deploy` · `expert-answer`
+`web-research`
 
 </td><td valign="top">
 
-**MCP tools** (27)
+**MCP tools** (29)
 
 🏗️ *Build / ship* — `scaffold_app` ·
 `deploy_readiness` · `responsive_audit` ·
@@ -198,14 +201,17 @@ ml, llm, security, …)
 `knowledge_search` · `knowledge_domains` ·
 `context_pack` · `suggest_experts`
 
+🌐 *Web search* — `web_search` ·
+`web_search_status`
+
 </td></tr>
 </table>
 
 ---
 
-## 🧑‍🚀 Agents — 36 subagents (in Claude Code `/agents`)
+## 🧑‍🚀 Agents — 37 subagents (in Claude Code `/agents`)
 
-engine-ai installs **36 subagents** into `~/.claude/agents/`: **6 engine agents** (below) that run the
+engine-ai installs **37 subagents** into `~/.claude/agents/`: **7 engine agents** (below) that run the
 build/ship loop, and **30 `domain-*` experts** (see [Knowledge swarm](#-knowledge-swarm--30-domain-experts-grounded-by-retrieval)).
 They show up in Claude Code's `/agents` menu and are invoked either directly or by the orchestrator as
 an **agent-to-agent (A2A) loop**. Each has its own context and its own tool set (so it can only do its job).
@@ -218,6 +224,7 @@ an **agent-to-agent (A2A) loop**. Each has its own context and its own tool set 
 | 🚀 **engine-deployer** | Publishes to **GitHub** + deploys to **Vercel**; asks for the repo name; never bypasses auth. | mid-loop, or `/ship-live` | `git_publish`, `vercel_deploy`, `deploy_readiness` + Read, Bash |
 | 🔎 **engine-grounder** | Indexes the repo and returns the relevant code/docs (RAG); saves the grounding to memory. | before edits, or `/ground` | `index_repo`, `search_repo`, `memory_context`/`recall`/`save`, `app_find` + Read, Bash |
 | 🧠 **engine-memory** | Recalls & saves keyword-tagged **memory pockets** so apps evolve across prompts. | any time context matters | `memory_recall`/`context`/`save`/`list`/`forget` |
+| 🌐 **engine-researcher** | Live web search for current, real-time info (recent releases, pricing, breaking changes) the offline knowledge store can't have; cites source URLs. | time-sensitive questions, or `/research` | `web_search`, `web_search_status`, `memory_context`/`recall`/`save` + Read |
 
 **The A2A loop** the orchestrator runs (each step's output feeds the next; memory bookends every run):
 ```mermaid
@@ -230,7 +237,7 @@ flowchart LR
   D --> M1[memory_save + app_update]
 ```
 
-## 📓 Skills — 4 auto-triggered workflows
+## 📓 Skills — 5 auto-triggered workflows
 
 Skills are methodologies Claude adopts **automatically** from your wording (no command needed). Each
 has memory bookends (recall first, save last) so work evolves.
@@ -241,8 +248,9 @@ has memory bookends (recall first, save last) so work evolves.
 | **mobile-responsive** | recall → audit → fix (viewport, `@media` 640/768/1024, fluid units, tap targets ≥44px, responsive images) → verify at 390/768px → save | build/review any UI, or say mobile/responsive/phone |
 | **publish-and-deploy** | check tests + readiness → **GitHub** (asks name) → **Vercel** → verify the live URL → save | say push, deploy, go live, or ship |
 | **expert-answer** | `suggest_experts` → `context_pack` / domain expert → **cited** recommendation with tradeoffs → save | ask "how should I design/architect/scale/secure…", best practices, or X vs Y |
+| **web-research** | `web_search_status` (optional) → `web_search` → synthesize, **citing source URLs** → save | ask about current versions, pricing, recent changes, news — anything time-sensitive |
 
-## ⌨️ Commands — 8 slash commands
+## ⌨️ Commands — 9 slash commands
 
 Every command shares **one loop**: locate the app session (`app_find`) → **recall** memory → do the
 work → **save** memory + update the session. So an app accumulates its branch + folder + memory +
@@ -258,6 +266,7 @@ status across all of them.
 | `/ship-live` | `app_find` → gate → `git_publish` + `vercel_deploy` → verify → `memory_save` + `app_update` (URLs) |
 | `/expert <q>` | pick domain(s) → delegate to `domain-<slug>` expert(s) → `context_pack` + `knowledge_search` → cited answer |
 | `/knowledge [q]` | `knowledge_domains` (browse) or `knowledge_search` (find) → cited hits; open source files under `~/.engine-ai/sources/` |
+| `/research <q>` | `memory_context` → `web_search` → synthesize, cited by source URL → `memory_save` |
 
 ## 🧰 MCP tools — 27 (the agent calls these; you ask in English)
 
@@ -396,10 +405,10 @@ flowchart TD
 |---|---|---|
 | detect | checks WSL + Claude Code (`claude`) + `python3`; clean error + stop if Claude Code is missing | — |
 | link **skills** | symlinks each `skills/<name>/` | `~/.claude/skills/` |
-| link **commands** | symlinks each `commands/*.md` (the 6 slash commands) | `~/.claude/commands/` |
-| link **agents** | symlinks each `agents/*.md` (the 6 subagents → show in `/agents`) | `~/.claude/agents/` |
+| link **commands** | symlinks each `commands/*.md` (the 9 slash commands) | `~/.claude/commands/` |
+| link **agents** | symlinks each `agents/*.md` (all 37 subagents → show in `/agents`) | `~/.claude/agents/` |
 | install **hook** | merges a `SessionStart` hook (backs up `settings.json` first) | `~/.claude/settings.json` |
-| register **MCP** | `claude mcp add -s user engine-ai -- python3 …/mcp/forge_mcp.py` (all 22 tools) | user scope |
+| register **MCP** | `claude mcp add -s user engine-ai -- python3 …/mcp/forge_mcp.py` (all 29 tools) | user scope |
 
 Everything installs at **user scope**, so it's available in **every folder** you open Claude Code in.
 It's **idempotent** (re-runs are safe) and **fully reversible** (`engine-ai uninstall`).
