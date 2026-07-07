@@ -41,11 +41,26 @@ mobile responsiveness, and ships it to **GitHub + Vercel**.
 ## 🚀 Install (one command)
 
 ```bash
-npm install -g MoblyJ/engine-ai
+GR="$(npm root -g)"; GP="$(npm prefix -g)"
+for i in 1 2 3; do
+  rm -rf "$GR/engine-ai" "$GR"/.engine-ai-* "$GP/bin/engine-ai" 2>/dev/null
+  npm install -g MoblyJ/engine-ai && break
+  echo "attempt $i failed — retrying…"; sleep 2
+done
+grep -qxF "export PATH=\"$GP/bin:\$PATH\"" ~/.bashrc || echo "export PATH=\"$GP/bin:\$PATH\"" >> ~/.bashrc
+export PATH="$GP/bin:$PATH"
+engine-ai doctor
 ```
 
 That's it — the installer **auto-detects Claude Code and connects itself**. Then **open a new Claude
 Code session**.
+
+> **Why the extra steps, not just `npm install -g MoblyJ/engine-ai`?** Global installs of git-hosted
+> npm packages can hit a real, reproducible npm race on some filesystems (confirmed on WSL2): an
+> internal npm step spawns a shell against the target install directory before it's fully in place,
+> failing with `ENOENT`/`ENOTEMPTY`. Clearing that directory first and retrying a couple of times
+> works around it reliably. The `PATH` lines fix the separate, unrelated `engine-ai: command not
+> found` issue some shells hit even after a successful install.
 
 **Or from a git clone (same full feature set):**
 ```bash
