@@ -178,7 +178,7 @@ system-design, ml, llm, security, …)
 
 </td><td valign="top">
 
-**MCP tools** (33)
+**MCP tools** (36)
 
 🏗️ *Build / ship* — `scaffold_app` ·
 `deploy_readiness` · `deploy_verify` ·
@@ -276,7 +276,7 @@ status across all of them.
 | `/research <q>` | `memory_context` → `web_search` → synthesize, cited by source URL → `memory_save` |
 | `/debug <error>` | `memory_context` → `so_debug` → apply + adapt fix → **verify it passes** → `memory_save` |
 
-## 🧰 MCP tools — 33 (the agent calls these; you ask in English)
+## 🧰 MCP tools — 36 (the agent calls these; you ask in English)
 
 | Group | Tool | Purpose |
 |---|---|---|
@@ -298,6 +298,9 @@ status across all of them.
 | | `app_list` / `app_resume` | list sessions (2-line summaries) / reopen one with folder + memory + drift check |
 | | `app_update` | save a session's 2-line summary + keywords |
 | | `app_find` | which app session a working dir belongs to (for session-aware commands) |
+| 🔑 OpenRouter | `openrouter_setup` | check every agent's API-key + model assignment; when anything is missing it returns **ask_user instructions** — Claude prompts you for `key,model` lines (or a CSV path) and imports them |
+| | `openrouter_import` | import pasted `key,model` / `profile,key,model` lines (or a CSV **file path**) — keys stored **permanently** in the AES-256-GCM vault, models saved per profile |
+| | `codex_setup` | generate **Codex CLI** config (`~/.codex/config.toml`): one OpenRouter provider + profile selector per agent key/model + a chmod-600 env file; never touches `auth.json` |
 | 🎓 Knowledge | `knowledge_ingest` | clone/ingest a repo into the domain-tagged FTS5 store (records the source commit; `refresh=true` to update) |
 | | `knowledge_search` | BM25 search the ingested knowledge, optionally by domain |
 | | `knowledge_domains` | list ingested domains + chunk/repo counts + source freshness |
@@ -360,6 +363,16 @@ credentials); auth failures stop, they don't retry. Start with 2 active workers.
 
 **Assign a different API key + model to each agent:**
 
+The easiest path is inside Claude Code — just ask (e.g. *"set up openrouter keys"*). The flow:
+
+1. `openrouter_setup` checks all 10 profiles and returns **ask_user instructions** when a key or
+   model is missing → Claude prompts you.
+2. You paste lines — `key,model` per line (auto-assigned to the missing profiles in order), or
+   explicit `profile,key,model` — or point at a CSV file. A header row and `#` comments are fine.
+3. `openrouter_import` stores each key in the **encrypted vault** and the model per profile —
+   **permanent** across restarts, never echoed back (masked `set (…abcd)`).
+4. `codex_setup` generates **Codex CLI** config from whatever is configured.
+
 ```bash
 engine-ai runtime profiles list      # all 10 profiles: key status (masked), model, agents
 engine-ai runtime profiles agents    # engine agents + domain experts → profile mapping
@@ -372,6 +385,17 @@ Keys live in the environment (`env:VAR`) or the AES-256-GCM vault (`vault:NAME` 
 profiles store **references only**. Agents share work through the project-scoped memory store,
 bounded context packets, and the serialized integrator — each worker runs its packet under its
 own key/model and hands off structured outcomes.
+
+**Codex CLI** (`codex`): `codex_setup` writes a marked block into `~/.codex/config.toml` with one
+`[model_providers.engine_<profile>]` per configured agent (OpenRouter base URL + its own
+`env_key`) and a `[profiles.engine_<profile>]` selector, plus `~/.codex/engine-ai-env.sh`
+(chmod 600) holding the key exports. Your existing config is preserved (backup kept, block
+re-written idempotently), and `auth.json` — your OpenAI login — is **never touched**. Then:
+
+```bash
+source ~/.codex/engine-ai-env.sh     # or add to your shell profile — permanent
+codex --profile engine_backend       # any of the ten, each with its own key + model
+```
 
 ```bash
 engine-ai runtime plan --graph tasks.json    # validate a task dependency graph
@@ -528,7 +552,7 @@ vercel login        # Vercel
 
 ## 🧪 Verified
 
-Pure-stdlib test suite (`python3 -m unittest discover -s tests`): **190 tests** — MCP protocol
+Pure-stdlib test suite (`python3 -m unittest discover -s tests`): **213 tests** — MCP protocol
 (33 tools incl. **failure paths**: parse errors, invalid params, operational-vs-protocol errors),
 scaffolding (node/python/static · overwrite refusal · dry-run · backups), incremental RAG with line
 spans, AES-256-GCM vault, mobile-responsive audit, GitHub/Vercel auth guards, **memory pockets**

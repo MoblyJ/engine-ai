@@ -87,7 +87,7 @@ class Catalog:
 
     # ---------------------------------------------------------------- fetch
     def refresh(self, url: str = OPENROUTER_MODELS_URL, timeout: int = 30) -> int:
-        req = urllib.request.Request(url, headers={"User-Agent": "engine-ai/0.16"})
+        req = urllib.request.Request(url, headers={"User-Agent": "engine-ai/0.17"})
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         entries = data.get("data") or data if isinstance(data, dict) else data

@@ -9,7 +9,8 @@ sys.path.insert(0, REPO)
 
 from engine_core.config import Config, ConfigError, load_config  # noqa: E402
 from engine_core.profiles import (Assignments, DEFAULT_AGENTS, DEFAULT_TEN,  # noqa: E402
-                                  default_profiles, mask)
+                                  default_profiles, mask, parse_key_csv)
+from engine_core.codex_config import render_block, write_config, write_env_file, _merge  # noqa: E402
 
 
 class _FakeVault:
@@ -135,6 +136,162 @@ class TestAssignments(unittest.TestCase):
         self.assertEqual(domain["domain-frontend"], "frontend")
         for profile in domain.values():
             self.assertIn(profile, DEFAULT_TEN)
+
+
+class TestKeyCsvParsing(unittest.TestCase):
+    def test_two_and_three_column_lines(self):
+        rows, errors = parse_key_csv(
+            "profile,key,model\n"
+            "backend,sk-k1,m/b\n"
+            "sk-k2,m/f\n")
+        self.assertEqual(errors, [])
+        self.assertEqual(rows[0], {"profile": "backend", "key": "sk-k1", "model": "m/b", "line": 2})
+        self.assertIsNone(rows[1]["profile"])
+
+    def test_comments_blanks_and_junk(self):
+        rows, errors = parse_key_csv("# comment\n\nsk-a,m/a\ntoo,many,fields,here\n")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(len(errors), 1)
+
+    def test_quotes_stripped_uppercase_profile_lowered(self):
+        rows, _ = parse_key_csv('"Frontend","sk-x","m/f"\n')
+        self.assertEqual(rows[0]["profile"], "frontend")
+        self.assertEqual(rows[0]["key"], "sk-x")
+
+    def test_incomplete_line_rejected(self):
+        rows, errors = parse_key_csv("sk-only-model-missing,\n")
+        self.assertEqual(rows, [])
+        self.assertTrue(errors)
+
+
+class TestImportKeys(unittest.TestCase):
+    """Pasted `key,model` import → permanent, encrypted, masked."""
+
+    def setUp(self):
+        self.home = tempfile.mkdtemp()
+        self.vault = {}
+        self.a = Assignments(self.home)
+
+    def _import(self, text, **kw):
+        return self.a.import_keys(text=text, set_secret=self._set, get_secret=self._get, **kw)
+
+    def _set(self, name, value, scope="global"):
+        self.vault[name] = value
+
+    def _get(self, name, scope="global"):
+        return self.vault.get(name)
+
+    def test_three_col_import_is_permanent(self):
+        out = self._import("backend,sk-k1,m/b\nfrontend,sk-k2,m/f\n")
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["imported"], 2)
+        # keys in the "vault", assignments on disk — a fresh instance sees both
+        b = Assignments(self.home, overrides_path=self.a.overrides_path)
+        p = b.profile("backend")
+        self.assertEqual(p.credential_ref, "vault:OPENROUTER_BACKEND_KEY")
+        self.assertEqual(p.model_ref, "m/b")
+        self.assertEqual(p.resolve_credential(self._get), "sk-k1")
+
+    def test_two_col_auto_fills_missing_profiles_in_order(self):
+        out = self._import("sk-1,m/1\nsk-2,m/2\n")
+        self.assertTrue(out["ok"])
+        got = {r["profile"] for r in out["profiles"]}
+        self.assertEqual(got, {"planner", "frontend"}, "DEFAULT_TEN order")
+
+    def test_two_col_with_profile_arg(self):
+        out = self._import("sk-1,m/1\n", profile="reviewer")
+        self.assertEqual(out["profiles"][0]["profile"], "reviewer")
+
+    def test_keys_never_echoed(self):
+        out = self._import("backend,sk-supersecret123,m/b\n")
+        self.assertNotIn("sk-supersecret123", str(out))
+
+    def test_more_lines_than_profiles_is_an_error(self):
+        out = self._import("".join(f"sk-{i},m/{i}\n" for i in range(11)))
+        self.assertTrue(out["errors"])
+
+    def test_unknown_profile_reported(self):
+        out = self._import("nope,sk-1,m/1\n")
+        self.assertFalse(out["ok"])
+        self.assertTrue(any("unknown profile" in e for e in out["errors"]))
+
+    def test_csv_path(self):
+        path = os.path.join(self.home, "keys.csv")
+        with open(path, "w") as f:
+            f.write("backend,sk-p,m/p\n")
+        out = self.a.import_keys(path=path, set_secret=self._set, get_secret=self._get)
+        self.assertTrue(out["ok"])
+        self.assertEqual(self.a.profile("backend").model_ref, "m/p")
+
+    def test_setup_payload_prompts_when_missing(self):
+        payload = self.a.setup_payload(getter=self._get)
+        self.assertFalse(payload["ready"])
+        self.assertIn("key,model", payload["ask_user"])
+        self._import("backend,sk-1,m/1\n")
+        payload = self.a.setup_payload(getter=self._get)
+        self.assertIn("backend", [r["profile"] for r in payload["profiles"]
+                                  if r["key"] != "MISSING"])
+        self.assertTrue(payload["missing"], "other profiles still missing")
+
+
+class TestCodexConfig(unittest.TestCase):
+    ROWS = [{"profile": "backend", "model": "m/b", "key": "set (…k1)"},
+            {"profile": "test-author", "model": "m/t", "key": "set (…k2)"}]
+
+    def test_render_valid_toml(self):
+        import tomllib
+        data = tomllib.loads(render_block(self.ROWS, "backend"))
+        self.assertEqual(data["model"], "m/b")
+        self.assertEqual(data["model_provider"], "engine_backend")
+        self.assertEqual(data["model_providers"]["engine_backend"]["env_key"],
+                         "OPENROUTER_BACKEND_KEY")
+        self.assertEqual(data["model_providers"]["engine_test_author"]["base_url"],
+                         "https://openrouter.ai/api/v1")
+        self.assertEqual(data["profiles"]["engine_test_author"]["model"], "m/t")
+
+    def test_no_top_level_model_when_user_sets_one(self):
+        import tomllib
+        data = tomllib.loads(render_block(self.ROWS, "backend", include_top=False))
+        self.assertNotIn("model", data)
+        self.assertIn("model_providers", data)
+
+    def test_merge_keeps_top_level_keys_valid_after_user_tables(self):
+        import tomllib
+        merged = _merge("[tui]\nx = true\n", render_block(self.ROWS, "backend"))
+        data = tomllib.loads(merged)
+        self.assertEqual(data["model"], "m/b")       # top-level, not tui.model
+        self.assertTrue(data["tui"]["x"])
+
+    def test_merge_is_idempotent(self):
+        once = _merge("[tui]\nx = true\n", render_block(self.ROWS, "backend"))
+        twice = _merge(once, render_block(self.ROWS, "backend"))
+        from engine_core.codex_config import BEGIN, END
+        self.assertEqual(twice.count(BEGIN), 1, "block header not duplicated")
+        self.assertEqual(twice.count(END), 1)
+        import tomllib
+        self.assertIn("model_providers", tomllib.loads(twice))
+
+    def test_write_config_preserves_and_backs_up(self):
+        d = tempfile.mkdtemp()
+        with open(os.path.join(d, "config.toml"), "w") as f:
+            f.write("[tui]\nx = true\n")
+        out = write_config(d, self.ROWS, "backend")
+        self.assertTrue(out["ok"])
+        self.assertTrue(os.path.exists(os.path.join(d, "config.toml.engine-ai.bak")))
+        with open(os.path.join(d, "config.toml")) as f:
+            text = f.read()
+        self.assertTrue(text.index("model =") < text.index("[tui]"),
+                        "top-level keys must precede user tables")
+
+    def test_write_env_file_0600(self):
+        d = tempfile.mkdtemp()
+        out = write_env_file(d, {"backend": "sk-1", "researcher": "sk-2"})
+        path = out["env_file"]
+        self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+        with open(path) as f:
+            body = f.read()
+        self.assertIn('export OPENROUTER_RESEARCHER_KEY="sk-2"', body)
+        self.assertNotIn("model", body)
 
 
 class TestRunKeyGuard(unittest.TestCase):

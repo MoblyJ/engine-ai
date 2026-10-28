@@ -34,8 +34,9 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # repo root → engine_core
 from deploy import deploy_readiness, scaffold, verify  # noqa: E402
-from engine import Engine, vault_backend  # noqa: E402
+from engine import Engine, HOME, vault_backend  # noqa: E402
 from integrations import git_publish, responsive_audit, vercel_deploy  # noqa: E402
 import experts as _experts  # noqa: E402
 from knowledge import Knowledge  # noqa: E402
@@ -283,6 +284,69 @@ def _so_search(a):
       _obj({"error_text": {"type": "string"}, "language": {"type": "string"}, "k": {"type": "integer"}}, ["error_text"]))
 def _so_debug(a):
     return {"hits": SO.debug(a["error_text"], language=a.get("language"), k=int(a.get("k", 5)))}
+
+
+# ----------------------------------------------------------- per-agent OpenRouter keys
+@tool("openrouter_setup", "Check per-agent OpenRouter API-key + model assignment (10 profiles: planner, frontend, backend, …). If any key or model is missing, returns ask_user instructions — PROMPT THE USER for `key,model` lines (one per profile, or `profile,key,model`), or a CSV file path, then call openrouter_import. Permanent once set.",
+      _obj({}))
+def _openrouter_setup(a):
+    from engine_core.profiles import Assignments
+    return Assignments(HOME).setup_payload()
+
+
+@tool("openrouter_import", "Import OpenRouter API keys + models PERMANENTLY: pass `csv` with pasted lines `key,model` (or `profile,key,model`), or `path` to a CSV file. Keys go into the encrypted vault (AES-256-GCM); the profile's model is saved alongside. 2-column lines fill the missing profiles in order, or name one with `profile`. Use after asking the user (see openrouter_setup).",
+      _obj({"csv": {"type": "string"}, "path": {"type": "string"}, "profile": {"type": "string"}}, []))
+def _openrouter_import(a):
+    if not a.get("csv") and not a.get("path"):
+        return {"ok": False, "error": "pass csv (pasted `key,model` lines) or path (CSV file)"}
+    from engine_core.profiles import Assignments
+    return Assignments(HOME).import_keys(text=a.get("csv"), path=a.get("path"),
+                                         profile=a.get("profile"),
+                                         set_secret=ENGINE.set_secret,
+                                         get_secret=ENGINE.get_secret)
+
+
+@tool("codex_setup", "Generate Codex CLI config (~/.codex/config.toml) from the configured engine profiles: one OpenRouter model_provider + profile selector per agent key/model, plus a chmod-600 env file with the key exports. NEVER touches ~/.codex/auth.json (your OpenAI login is preserved); existing config.toml content outside the engine-ai block is kept, with a backup. Run openrouter_setup first — needs at least one configured profile.",
+      _obj({"codex_dir": {"type": "string"}, "active": {"type": "string"},
+            "write_env": {"type": "boolean"}}, []))
+def _codex_setup(a):
+    from engine_core import codex_config
+    from engine_core.profiles import Assignments
+    assignments = Assignments(HOME)
+    payload = assignments.setup_payload()
+    if payload["missing"]:
+        return {"ok": False, "error": "not all profiles are configured — run "
+                                      "openrouter_setup and import keys first",
+                "missing": payload["missing"]}
+    configured = [r for r in payload["profiles"] if r["key"] != "MISSING"]
+    # resolve actual model ids (catalog refs must already be pinned/imported)
+    resolved = []
+    for r in configured:
+        model = r.get("model")
+        if not model or str(model).startswith("✗"):
+            model = r["model_ref"]
+        if not model or str(model).startswith("catalog:"):
+            return {"ok": False, "error": f"profile {r['profile']!r} has no concrete model "
+                                          f"({r['model_ref']!r}) — re-import with key,model",
+                    "missing": [r["profile"]]}
+        resolved.append({**r, "model": model})
+    codex_dir = a.get("codex_dir") or os.path.join(os.path.expanduser("~"), ".codex")
+    out = codex_config.write_config(codex_dir, resolved, active=a.get("active"))
+    if a.get("write_env", True):
+        keys = {}
+        for r in resolved:
+            ref = r.get("credential_ref") or ""
+            name = ref[len("vault:"):] if ref.startswith("vault:") else None
+            key = ENGINE.get_secret(name) if name else None
+            if key:
+                keys[r["profile"]] = key
+        if keys:
+            out["env"] = codex_config.write_env_file(codex_dir, keys)
+    out["auth_json"] = "NOT modified (your OpenAI login is preserved)"
+    out["next"] = ("source ~/.codex/engine-ai-env.sh (or add it to your shell profile), "
+                   "then: codex --profile engine_" +
+                   (a.get("active") or resolved[0]["profile"]).replace("-", "_"))
+    return out
 
 
 # ----------------------------------------------------------- request validation

@@ -63,6 +63,55 @@ def vault_getter():
         return None
 
 
+def vault_setter():
+    """Lazy writer for the encrypted vault (None when unavailable)."""
+    try:
+        from engine_core._compat import mcp_module
+        return mcp_module("engine").Engine().set_secret
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def vault_name(profile: str) -> str:
+    """Vault/env name for a profile's OpenRouter key (stable across both)."""
+    return "OPENROUTER_" + profile.upper().replace("-", "_") + "_KEY"
+
+
+_HEADER_FIELDS = {"profile", "key", "api_key", "apikey", "model"}
+
+
+def parse_key_csv(text: str) -> tuple[list[dict], list[str]]:
+    """Parse pasted `key,model` lines (CSV body or file content).
+
+    Accepted line formats (blank lines / # comments skipped, quotes stripped):
+      `key,model`              — profile comes from the caller's `profile` arg
+                                 or is auto-assigned to the next missing profile
+      `profile,key,model`      — explicit per-line assignment
+    Returns (rows, errors); rows carry {profile?, key, model, line}.
+    """
+    rows, errors = [], []
+    for i, line in enumerate(text.splitlines(), 1):
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        parts = [p.strip().strip('"').strip("'") for p in s.split(",")]
+        if parts and all(p.lower() in _HEADER_FIELDS for p in parts if p):
+            continue  # header row
+        if len(parts) == 2:
+            key, model = parts
+            rows.append({"profile": None, "key": key, "model": model, "line": i})
+        elif len(parts) == 3:
+            profile, key, model = parts
+            rows.append({"profile": profile.lower(), "key": key, "model": model, "line": i})
+        else:
+            errors.append(f"line {i}: expected `key,model` or `profile,key,model` — got {s!r}")
+            continue
+        if not rows[-1]["key"] or not rows[-1]["model"]:
+            errors.append(f"line {i}: key and model are both required")
+            rows.pop()
+    return rows, errors
+
+
 def mask(key: str | None) -> str:
     if not key:
         return "MISSING"
@@ -192,3 +241,95 @@ class Assignments:
             return {f"domain-{d}": p for d, p in mcp_module("experts").DOMAIN_PROFILE.items()}
         except Exception:  # noqa: BLE001
             return {}
+
+    # ---------------------------------------------------------------- key import
+    def import_keys(self, text: str | None = None, path: str | None = None,
+                    profile: str | None = None, set_secret=None, get_secret=None) -> dict:
+        """Import pasted `key,model` lines (or a CSV file) and make them PERMANENT.
+
+        Keys are written to the encrypted vault (never to profiles.json or config
+        files); the profile's credential_ref points at the vault name and its
+        model_ref at the given model. Both survive restarts.
+        """
+        if path and not text:
+            try:
+                with open(path, encoding="utf-8") as f:
+                    text = f.read()
+            except OSError as e:
+                return {"ok": False, "error": f"cannot read {path}: {e}"}
+        if not text or not text.strip():
+            return {"ok": False, "error": "no key data: pass csv text or a file path"}
+        rows, errors = parse_key_csv(text)
+        if not rows:
+            return {"ok": False, "error": "no valid `key,model` lines found",
+                    "detail": errors}
+        set_secret = set_secret or vault_setter()
+        get_secret = get_secret or vault_getter()
+        if set_secret is None:
+            return {"ok": False, "error": "encrypted vault unavailable "
+                                          "(engine module not importable)"}
+
+        # 2-col lines with no profile arg auto-fill missing profiles in order
+        unassigned = [r for r in rows if r["profile"] is None]
+        if unassigned and not profile:
+            missing = [n for n in DEFAULT_TEN
+                       if not self.profiles[n].resolve_credential(get_secret)]
+            if len(unassigned) > len(missing):
+                errors.append("more `key,model` lines than unassigned profiles — "
+                              "use `profile,key,model` lines")
+                rows = [r for r in rows if r["profile"] is not None]
+            else:
+                fill = dict(zip([id(r) for r in unassigned], missing))
+                for r in unassigned:
+                    r["profile"] = fill[id(r)]
+        elif unassigned and profile and len(unassigned) > 1:
+            errors.append(f"{len(unassigned)} lines but one --profile — use "
+                          "`profile,key,model` lines")
+            rows = [r for r in rows if r["profile"] is not None]
+
+        imported = []
+        for r in rows:
+            name = r["profile"] or (profile and profile.lower())
+            if not name:
+                errors.append(f"line {r['line']}: no profile (pass profile= or use 3 columns)")
+                continue
+            if name not in self.profiles:
+                errors.append(f"line {r['line']}: unknown profile {name!r}")
+                continue
+            set_secret(vault_name(name), r["key"])  # encrypted at rest, permanent
+            self.set(name, credential_ref=f"vault:{vault_name(name)}", model_ref=r["model"])
+            imported.append({"profile": name, "key": mask(r["key"]),
+                             "model": r["model"], "vault_name": vault_name(name)})
+        ok = bool(imported)
+        out = {"ok": ok, "imported": len(imported), "profiles": imported,
+               "permanent": True,
+               "note": "keys live in the encrypted vault (~/.engine-ai); assignments in "
+                       "~/.engine-ai/profiles.json — both persist across restarts"}
+        if errors:
+            out["errors"] = errors
+        return out
+
+    def setup_payload(self, getter=None) -> dict:
+        """Status + explicit user-prompting instructions for the agent loop."""
+        rows = self.status(getter=getter or vault_getter())
+        missing = [{"profile": r["profile"], "agents": r["agents"],
+                    "key": r["key"], "model_ref": r["model_ref"]}
+                   for r in rows if r["key"] == "MISSING" or not r["model_ref"]
+                   or r["model_ref"].startswith("catalog:")]
+        out = {"profiles": rows, "ready": not missing, "missing": missing}
+        if missing:
+            names = ", ".join(m["profile"] for m in missing)
+            out["ask_user"] = (
+                f"API keys/models are not fully configured for: {names}. Ask the user to "
+                "provide, for each one, an OpenRouter API key and model as `key,model` "
+                "lines (or a path to a CSV file with those lines, optionally "
+                "`profile,key,model`). Then call openrouter_import with them — storage is "
+                "permanent and encrypted. The user may also run: "
+                "engine-ai runtime profiles set <profile> --credential-ref vault:NAME "
+                "--model <id>")
+            out["how"] = ("openrouter_import({csv: 'sk-or-...,model-id\\n...' })  "
+                          "or  openrouter_import({ path: '/path/keys.csv' })")
+        else:
+            out["note"] = ("all profiles configured — codex_setup can now generate "
+                           "~/.codex/config.toml for Codex CLI")
+        return out

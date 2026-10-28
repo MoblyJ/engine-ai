@@ -72,7 +72,7 @@ class TestMCP(unittest.TestCase):
                          "memory_save", "memory_recall", "memory_context", "memory_list", "memory_forget",
                          "memory_get", "app_create", "app_update", "app_list", "app_resume", "app_find",
                          "knowledge_ingest", "knowledge_search", "knowledge_domains", "context_pack",
-                         "suggest_experts"):
+                         "suggest_experts", "openrouter_setup", "openrouter_import", "codex_setup"):
             self.assertIn(expected, names)
 
     def test_scaffold_then_readiness(self):
@@ -231,6 +231,96 @@ class TestMCP(unittest.TestCase):
         self.assertTrue(same["pockets"])
         full, _ = self.cli.tool("memory_get", {"id": same["pockets"][0]["id"]})
         self.assertEqual(full["text"], "secret fact X")
+
+    # ------------------------------------------------ per-agent OpenRouter keys (v0.17)
+    def test_openrouter_setup_prompts_when_missing(self):
+        s, err = self.cli.tool("openrouter_setup", {})
+        self.assertFalse(err, s)
+        self.assertFalse(s["ready"], "fresh home has no keys")
+        self.assertTrue(s["ask_user"], "must carry instructions to prompt the user")
+        self.assertIn("key,model", s["ask_user"])
+        self.assertEqual(len(s["missing"]), 10)
+
+    def test_openrouter_import_pasted_csv_then_permanent(self):
+        csv_text = ("profile,key,model\n"
+                    "backend,sk-or-v1-backend123,deepseek/deepseek-r1\n"
+                    "frontend,sk-or-v1-front456,meta-llama/llama-3.3-70b-instruct\n"
+                    "sk-or-v1-plan789,qwen/qwen-2.5-coder-32b\n")
+        imp, err = self.cli.tool("openrouter_import", {"csv": csv_text})
+        self.assertFalse(err, imp)
+        self.assertTrue(imp["ok"], imp)
+        self.assertEqual(imp["imported"], 3)
+        by_profile = {r["profile"]: r for r in imp["profiles"]}
+        self.assertEqual(by_profile["planner"]["model"], "qwen/qwen-2.5-coder-32b",
+                         "2-column line auto-fills the next missing profile")
+        self.assertNotIn("sk-or-v1-backend123", json.dumps(imp),
+                         "keys are masked in responses, never echoed")
+        # permanence: a SECOND server process (same ENGINE_AI_HOME) still sees them
+        cli2 = MCPClient(self.home)
+        try:
+            s2, _ = cli2.tool("openrouter_setup", {})
+            done = {r["profile"]: r for r in s2["profiles"] if r["key"] != "MISSING"}
+            self.assertIn("backend", done)
+            self.assertIn("deepseek/deepseek-r1", done["backend"]["model_ref"])
+        finally:
+            cli2.close()
+
+    def test_openrouter_import_from_csv_file(self):
+        csv_path = os.path.join(tempfile.mkdtemp(), "keys.csv")
+        with open(csv_path, "w") as f:
+            f.write("researcher,sk-or-file-key-1,m/researcher-model\n")
+        imp, _ = self.cli.tool("openrouter_import", {"path": csv_path})
+        self.assertTrue(imp["ok"], imp)
+        self.assertEqual(imp["imported"], 1)
+
+    def test_openrouter_import_requires_data(self):
+        out, _ = self.cli.tool("openrouter_import", {})
+        self.assertFalse(out["ok"])
+
+    def test_codex_setup_end_to_end(self):
+        # refuses while profiles are incomplete
+        cs, _ = self.cli.tool("codex_setup", {"codex_dir": tempfile.mkdtemp()})
+        self.assertFalse(cs["ok"])
+        self.assertTrue(cs.get("missing"))
+        # configure everything, then generate (explicit profile,key,model lines)
+        rest = "\n".join(f"{n},sk-or-v1-{n.replace('-', '')},m/{n}" for n in
+                         ["backend", "frontend", "planner", "services", "database",
+                          "test-author", "reviewer", "security-review", "researcher",
+                          "documentation"])
+        imp, _ = self.cli.tool("openrouter_import", {"csv": rest})
+        self.assertTrue(imp["ok"], imp)
+        codex_dir = tempfile.mkdtemp()
+        with open(os.path.join(codex_dir, "config.toml"), "w") as f:  # pre-existing user config
+            f.write('[tui]\nscreen_reader_detection_done = true\n')
+        cs2, err = self.cli.tool("codex_setup", {"codex_dir": codex_dir, "active": "backend"})
+        self.assertFalse(err, cs2)
+        self.assertTrue(cs2["ok"], cs2)
+        with open(os.path.join(codex_dir, "config.toml")) as f:
+            cfg = f.read()
+        import tomllib
+        data = tomllib.loads(cfg)
+        self.assertTrue(data["tui"]["screen_reader_detection_done"], "user config preserved")
+        self.assertEqual(data["model"], "m/backend")
+        self.assertEqual(data["model_provider"], "engine_backend")
+        self.assertEqual(data["model_providers"]["engine_backend"]["env_key"],
+                         "OPENROUTER_BACKEND_KEY")
+        self.assertEqual(data["model_providers"]["engine_backend"]["base_url"],
+                         "https://openrouter.ai/api/v1")
+        self.assertIn("engine_researcher", data["profiles"])
+        envf = os.path.join(codex_dir, "engine-ai-env.sh")
+        with open(envf) as f:
+            envtxt = f.read()
+        self.assertIn('export OPENROUTER_BACKEND_KEY="sk-or-v1-backend"', envtxt)
+        self.assertEqual(os.stat(envf).st_mode & 0o777, 0o600)
+        self.assertFalse(os.path.exists(os.path.join(codex_dir, "auth.json")),
+                         "auth.json (OpenAI login) must never be touched")
+        # idempotent re-run replaces only the engine-ai block
+        cs3, _ = self.cli.tool("codex_setup", {"codex_dir": codex_dir})
+        self.assertTrue(cs3["ok"])
+        with open(os.path.join(codex_dir, "config.toml")) as f:
+            self.assertEqual(f.read().count("engine-ai (openrouter providers) >>>"), 1,
+                             "block not duplicated")
+        self.assertIn("NOT modified", cs2["auth_json"])
 
 
 if __name__ == "__main__":
