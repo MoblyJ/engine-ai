@@ -552,7 +552,7 @@ vercel login        # Vercel
 
 ## 🧪 Verified
 
-Pure-stdlib test suite (`python3 -m unittest discover -s tests`): **213 tests** — MCP protocol
+Pure-stdlib test suite (`python3 -m unittest discover -s tests`): **216 tests** — MCP protocol
 (33 tools incl. **failure paths**: parse errors, invalid params, operational-vs-protocol errors),
 scaffolding (node/python/static · overwrite refusal · dry-run · backups), incremental RAG with line
 spans, AES-256-GCM vault, mobile-responsive audit, GitHub/Vercel auth guards, **memory pockets**

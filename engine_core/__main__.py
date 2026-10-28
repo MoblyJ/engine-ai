@@ -42,8 +42,13 @@ def _store() -> StateStore:
 
 
 def _load_graph(path: str) -> TaskGraph:
-    with open(path, encoding="utf-8") as f:
-        data = json.load(f)
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except OSError as e:
+        raise GraphError(f"cannot read graph {path!r}: {e}") from e
+    except json.JSONDecodeError as e:
+        raise GraphError(f"graph {path!r} is not valid JSON: {e}") from e
     graph = TaskGraph()
     for t in data.get("tasks", data if isinstance(data, list) else []):
         graph.add(TaskSpec.from_dict(t))

@@ -24,7 +24,10 @@
     "docs/",
     "install.sh",
     "config.example.yaml",
-    "README.md"
+    "README.md",
+    "!**/__pycache__",
+    "!**/*.pyc",
+    "!**/*.pyo"
   ],
   "keywords": [
     "claude-code",
