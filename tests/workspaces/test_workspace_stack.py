@@ -179,6 +179,17 @@ class TestVerifierAndEvidence(unittest.TestCase):
         self.assertFalse(out["passed"])
         self.assertEqual([c["exit_code"] for c in out["checks"]], [0, 1])
 
+    def test_verifier_resolves_bare_script_names(self):
+        # planners say `hello_cli.py`; the verifier runs it with the interpreter
+        d = tempfile.mkdtemp()
+        with open(os.path.join(d, "hello_cli.py"), "w") as f:
+            f.write("print('hello world')\n")
+        out = Verifier().run_checks(d, [["hello_cli.py"]])
+        self.assertTrue(out["passed"], out)
+        self.assertIn("hello world", out["checks"][0]["output_tail"])
+        self.assertTrue(out["checks"][0]["command"][0].endswith("python3"),
+                        "evidence shows the interpreter that actually ran")
+
     def test_missing_command_is_not_passed(self):
         out = Verifier().run_checks(tempfile.mkdtemp(), [["definitely-not-a-real-cmd-xyz"]])
         self.assertFalse(out["passed"])

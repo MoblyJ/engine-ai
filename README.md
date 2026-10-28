@@ -397,6 +397,26 @@ source ~/.codex/engine-ai-env.sh     # or add to your shell profile — permanen
 codex --profile engine_backend       # any of the ten, each with its own key + model
 ```
 
+### keys.csv → 10 agents → shipped work
+
+Drop a `keys.csv` anywhere conventional (`~/.engine-ai/keys.csv`, `./keys.csv`, or
+`$ENGINE_AI_KEYS_CSV`) with one `key,model` line per agent profile (a header row, `#`
+comments, BOM/CRLF from Excel are all tolerated). It is **auto-detected**: `openrouter_setup`
+reports it (with a warning if it sits inside a git repo — it is git-ignored by this toolkit and
+must never be committed) and Claude asks you to confirm the import. Then the agents take over —
+ideation, planning, code, and verification all come from the agents under their own keys:
+
+```bash
+engine-ai runtime keys               # detect + import keys.csv → the 10 profiles
+engine-ai runtime build "a small todo API with tests"   # planner plans → workers build → verifier checks
+```
+
+The **planner** agent decomposes your objective into a validated task graph (contracts first);
+each **worker** runs its packet under its own profile's key + model with real build tools
+(read/write/list/run — contained to the workspace); shared context flows through project memory
+and bounded packets; every task is **verified by executed commands** (evidence manifests), and
+quota/auth failures pause with a checkpoint instead of burning retries.
+
 ```bash
 engine-ai runtime plan --graph tasks.json    # validate a task dependency graph
 engine-ai runtime models refresh             # fetch the live model catalog (network)
@@ -552,7 +572,7 @@ vercel login        # Vercel
 
 ## 🧪 Verified
 
-Pure-stdlib test suite (`python3 -m unittest discover -s tests`): **216 tests** — MCP protocol
+Pure-stdlib test suite (`python3 -m unittest discover -s tests`): **239 tests** — MCP protocol
 (33 tools incl. **failure paths**: parse errors, invalid params, operational-vs-protocol errors),
 scaffolding (node/python/static · overwrite refusal · dry-run · backups), incremental RAG with line
 spans, AES-256-GCM vault, mobile-responsive audit, GitHub/Vercel auth guards, **memory pockets**

@@ -1,5 +1,6 @@
 """Per-agent profile assignments — distinct API key + model per agent (upgrade.md §4)."""
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -148,6 +149,18 @@ class TestKeyCsvParsing(unittest.TestCase):
         self.assertEqual(rows[0], {"profile": "backend", "key": "sk-k1", "model": "m/b", "line": 2})
         self.assertIsNone(rows[1]["profile"])
 
+    def test_bom_crlf_and_plural_header(self):
+        # Excel-export shape: UTF-8 BOM + "api keys,models" header + CRLF endings
+        text = "﻿api keys,models\r\nsk-a,m/a\r\nsk-b,m/b\r\n"
+        rows, errors = parse_key_csv(text)
+        self.assertEqual(errors, [])
+        self.assertEqual(len(rows), 2, "BOM+plural header must not become a data row")
+
+    def test_agent_column_header(self):
+        rows, errors = parse_key_csv("agent,api key,model\nbackend,sk-x,m/x\n")
+        self.assertEqual((rows, errors), ([{"profile": "backend", "key": "sk-x",
+                                            "model": "m/x", "line": 2}], []))
+
     def test_comments_blanks_and_junk(self):
         rows, errors = parse_key_csv("# comment\n\nsk-a,m/a\ntoo,many,fields,here\n")
         self.assertEqual(len(rows), 1)
@@ -292,6 +305,64 @@ class TestCodexConfig(unittest.TestCase):
             body = f.read()
         self.assertIn('export OPENROUTER_RESEARCHER_KEY="sk-2"', body)
         self.assertNotIn("model", body)
+
+
+class TestKeysFileDetection(unittest.TestCase):
+    def setUp(self):
+        self.home = tempfile.mkdtemp()
+        self._cwd = os.getcwd()
+
+    def tearDown(self):
+        os.chdir(self._wd if hasattr(self, "_wd") else self._cwd)
+
+    def test_detects_home_file(self):
+        from engine_core.profiles import detect_keys_file
+        with open(os.path.join(self.home, "keys.csv"), "w") as f:
+            f.write("sk-a,m/a\n")
+        found = detect_keys_file(self.home)
+        self.assertEqual(found["path"], os.path.join(self.home, "keys.csv"))
+
+    def test_detects_cwd_file_with_git_warning(self):
+        from engine_core.profiles import detect_keys_file
+        d = tempfile.mkdtemp()
+        os.chdir(d)
+        subprocess.run(["git", "init", "-q"], cwd=d, check=True)
+        with open(os.path.join(d, "keys.csv"), "w") as f:
+            f.write("sk-a,m/a\n")
+        found = detect_keys_file(tempfile.mkdtemp())  # home empty → falls through to cwd
+        self.assertEqual(found["path"], os.path.join(d, "keys.csv"))
+        self.assertTrue(found["in_git_repo"], "keys.csv inside a repo must be flagged")
+
+    def test_env_var_wins(self):
+        from engine_core.profiles import detect_keys_file
+        env_path = os.path.join(tempfile.mkdtemp(), "custom.csv")
+        with open(env_path, "w") as f:
+            f.write("sk-a,m/a\n")
+        old = os.environ.get("ENGINE_AI_KEYS_CSV")
+        os.environ["ENGINE_AI_KEYS_CSV"] = env_path
+        try:
+            self.assertEqual(detect_keys_file(self.home)["path"], env_path)
+        finally:
+            if old is None:
+                os.environ.pop("ENGINE_AI_KEYS_CSV", None)
+            else:
+                os.environ["ENGINE_AI_KEYS_CSV"] = old
+
+    def test_setup_payload_mentions_found_keys_file(self):
+        a = Assignments(self.home)
+        with open(os.path.join(self.home, "keys.csv"), "w") as f:
+            f.write("sk-a,m/a\n")
+        payload = a.setup_payload()
+        self.assertIn("keys_file", payload)
+        self.assertIn("openrouter_import", payload["keys_file_hint"])
+
+    def test_keys_csv_is_git_ignored_in_this_repo(self):
+        # the repo is PUBLIC: a committed keys.csv leaks wallets
+        p = subprocess.run(["git", "check-ignore", "keys.csv"], cwd=REPO,
+                           capture_output=True, text=True)
+        self.assertEqual(p.returncode, 0, "keys.csv MUST be git-ignored")
+        with open(os.path.join(REPO, ".gitignore")) as f:
+            self.assertIn("keys.csv", f.read())
 
 
 class TestRunKeyGuard(unittest.TestCase):

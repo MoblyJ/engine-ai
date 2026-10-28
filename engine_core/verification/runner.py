@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, asdict, field
 
@@ -39,6 +40,19 @@ class Verifier:
     timeout_per_command: int = 300
     max_build_processes: int = 1
 
+    def _resolve(self, workspace: str, argv: list[str]) -> list[str]:
+        """Interpret planner-specified commands: a bare relative `script.py` (etc.) means
+        run it with its interpreter — models routinely omit the prefix, and a
+        PermissionError there would fail a WORKING implementation."""
+        if len(argv) and not os.path.isabs(argv[0]) and "/" not in argv[0] and " " not in argv[0]:
+            candidate = os.path.join(workspace, argv[0])
+            if os.path.isfile(candidate) and not os.access(candidate, os.X_OK):
+                if argv[0].endswith(".py"):
+                    return [sys.executable or "python3", *argv]
+                if argv[0].endswith((".sh", ".bash")):
+                    return ["bash", *argv]
+        return argv
+
     def run_checks(self, workspace: str, commands: list[list[str]] | dict,
                    commit: str | None = None) -> dict:
         """Execute commands in `workspace`; returns an evidence dict bound to `commit`."""
@@ -48,7 +62,8 @@ class Verifier:
         if isinstance(commands, dict):  # {"name": [...argv]}
             commands = [argv if isinstance(argv, list) else [str(argv)] for argv in commands.values()]
         results = []
-        for argv in commands:
+        for raw in commands:
+            argv = self._resolve(workspace, raw)
             name = " ".join(argv[:2])[:80]
             t0 = time.time()
             try:

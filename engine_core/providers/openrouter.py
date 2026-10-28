@@ -134,10 +134,25 @@ class OpenRouterProvider(Provider):
         return None
 
     # ---------------------------------------------------------------- completion
+    @staticmethod
+    def _wire_messages(messages: list[Message]) -> list[dict]:
+        """OpenAI chat wire format: assistant turns carry tool_calls; tool results
+        carry tool_call_id (missing either is a 400 from OpenRouter/OpenAI)."""
+        out = []
+        for m in messages:
+            if m.role == "assistant" and m.tool_calls:
+                out.append({"role": "assistant", "content": m.content or None,
+                            "tool_calls": m.tool_calls})
+            elif m.role == "tool":
+                out.append({"role": "tool", "tool_call_id": m.tool_call_id,
+                            "content": m.content or "(empty result)"})
+            else:
+                out.append({"role": m.role, "content": m.content})
+        return out
+
     def complete(self, model: str, messages: list[Message], *, tools: list[dict] | None = None,
                  max_output_tokens: int | None = None, temperature: float | None = None) -> Completion:
-        body: dict = {"model": model,
-                      "messages": [{"role": m.role, "content": m.content} for m in messages]}
+        body: dict = {"model": model, "messages": self._wire_messages(messages)}
         if tools:
             body["tools"] = tools
             body["tool_choice"] = "auto"

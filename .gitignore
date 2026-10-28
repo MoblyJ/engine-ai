@@ -6,3 +6,8 @@ node_modules/
 .DS_Store
 data/
 *.db
+
+# API keys — NEVER commit (a leaked OpenRouter key is a leaked wallet)
+keys.csv
+*.keys.csv
+engine-ai-env.sh

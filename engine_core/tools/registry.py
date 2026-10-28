@@ -7,6 +7,8 @@ not merely included in the prompt. `default_registry()` exposes the existing MCP
 
 from __future__ import annotations
 
+import os
+
 from dataclasses import dataclass
 
 
@@ -44,11 +46,85 @@ class Registry:
                        "read_only": t.read_only} for name, t in self._tools.items()}
 
 
-def default_registry(mcp_tools: bool = True) -> Registry:
-    """A registry with the MCP toolkit's tools registered (read-only ones marked)."""
+def _register_build_tools(reg: Registry) -> None:
+    """File + shell tools workers need to actually BUILD things.
+
+    Path arguments are contained to the workspace by Policy (executor-side); these
+    handlers additionally default to the context workspace and bound every result.
+    """
+
+    def _root(args: dict, context: dict | None) -> str:
+        ws = (context or {}).get("workspace") or os.getcwd()
+        return args.get("cwd") or args.get("root") or ws
+
+    def read_file(args, context=None):
+        path = os.path.join(_root(args, context), args["path"])
+        with open(path, encoding="utf-8", errors="ignore") as f:
+            return {"ok": True, "path": args["path"], "content": f.read(50_000)}
+
+    def write_file(args, context=None):
+        path = os.path.join(_root(args, context), args["path"])
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        data = args.get("content", "")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(data)
+        return {"ok": True, "path": args["path"], "bytes": len(data)}
+
+    def list_dir(args, context=None):
+        base = os.path.join(_root(args, context), args.get("path", ""))
+        entries = []
+        for name in sorted(os.listdir(base))[:200]:
+            full = os.path.join(base, name)
+            entries.append(("/" if os.path.isdir(full) else " ", name))
+        return {"ok": True, "path": args.get("path", "."), "entries": entries}
+
+    def run_command(args, context=None):
+        import subprocess
+        argv = args["command"] if isinstance(args["command"], list) else \
+            ["bash", "-c", str(args["command"])]
+        try:
+            p = subprocess.run(argv, cwd=_root(args, context), capture_output=True,
+                               text=True, timeout=int(args.get("timeout", 60)),
+                               stdin=subprocess.DEVNULL)
+            return {"ok": p.returncode == 0, "exit_code": p.returncode,
+                    "stdout": (p.stdout or "")[-4000:], "stderr": (p.stderr or "")[-2000:]}
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "exit_code": None, "stderr": "command timed out"}
+        except OSError as e:
+            return {"ok": False, "exit_code": None, "stderr": f"{e.__class__.__name__}: {e}"}
+
+    reg.register("read_file", read_file,
+                 {"type": "object", "properties": {"path": {"type": "string"}},
+                  "required": ["path"]}, read_only=True,
+                 description="Read a file in the workspace (bounded to 50k chars).")
+    reg.register("write_file", write_file,
+                 {"type": "object", "properties": {"path": {"type": "string"},
+                                                   "content": {"type": "string"}},
+                  "required": ["path", "content"]},
+                 description="Create/overwrite a file in the workspace.")
+    reg.register("list_dir", list_dir,
+                 {"type": "object", "properties": {"path": {"type": "string"}}},
+                 read_only=True, description="List a workspace directory.")
+    reg.register("run_command", run_command,
+                 {"type": "object",
+                  "properties": {"command": {}, "timeout": {"type": "integer"}},
+                  "required": ["command"]},
+                 description="Run a command in the workspace (bounded, no stdin).")
+
+
+def build_registry() -> Registry:
+    """The tools a build worker needs (no MCP surface — standalone-safe)."""
     reg = Registry()
     reg.register("report_status", lambda a: {"ok": True, "status": "working"},
-                 {"type": "object", "properties": {}}, read_only=True, description="Report progress")
+                 {"type": "object", "properties": {}}, read_only=True,
+                 description="Report progress")
+    _register_build_tools(reg)
+    return reg
+
+
+def default_registry(mcp_tools: bool = True) -> Registry:
+    """A registry with the MCP toolkit's tools registered (read-only ones marked)."""
+    reg = build_registry()
     if mcp_tools:
         try:
             from engine_core._compat import mcp_module

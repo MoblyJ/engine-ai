@@ -77,26 +77,57 @@ def vault_name(profile: str) -> str:
     return "OPENROUTER_" + profile.upper().replace("-", "_") + "_KEY"
 
 
-_HEADER_FIELDS = {"profile", "key", "api_key", "apikey", "model"}
+def _is_header(fields: list[str]) -> bool:
+    """A row is a header when EVERY field is a column-name word (any case/plural):
+    profile/agent, key/api key/api_key/keys, model/models."""
+    import re
+    name = re.compile(r"^(profile|agent|key|api[_ -]?keys?|models?)$", re.I)
+    return bool(fields) and all(name.match(f) for f in fields if f)
+
+
+def detect_keys_file(home: str | None = None) -> dict | None:
+    """Find a keys.csv the user dropped: $ENGINE_AI_KEYS_CSV, ~/.engine-ai/keys.csv,
+    then ./keys.csv. Returns {path, in_git_repo} — in_git_repo is a leak warning
+    (a keys.csv inside a git checkout is one `git add -A` from being pushed)."""
+    import subprocess
+    candidates = []
+    env = os.environ.get("ENGINE_AI_KEYS_CSV")
+    if env:
+        candidates.append(env)
+    home = home or (os.environ.get("ENGINE_AI_HOME") or os.path.expanduser("~/.engine-ai"))
+    candidates.append(os.path.join(home, "keys.csv"))
+    candidates.append(os.path.join(os.getcwd(), "keys.csv"))
+    for path in candidates:
+        if path and os.path.isfile(path):
+            try:
+                in_repo = subprocess.run(["git", "-C", os.path.dirname(os.path.abspath(path)) or ".",
+                                          "rev-parse", "--is-inside-work-tree"],
+                                         capture_output=True, text=True, timeout=10
+                                         ).stdout.strip() == "true"
+            except Exception:  # noqa: BLE001
+                in_repo = False
+            return {"path": os.path.abspath(path), "in_git_repo": in_repo}
+    return None
 
 
 def parse_key_csv(text: str) -> tuple[list[dict], list[str]]:
     """Parse pasted `key,model` lines (CSV body or file content).
 
-    Accepted line formats (blank lines / # comments skipped, quotes stripped):
+    Accepted line formats (blank lines / # comments skipped, quotes stripped,
+    header rows like `key,model` / `profile,api key,models` skipped):
       `key,model`              — profile comes from the caller's `profile` arg
                                  or is auto-assigned to the next missing profile
       `profile,key,model`      — explicit per-line assignment
     Returns (rows, errors); rows carry {profile?, key, model, line}.
     """
     rows, errors = [], []
-    for i, line in enumerate(text.splitlines(), 1):
+    for i, line in enumerate(text.lstrip("﻿").splitlines(), 1):
         s = line.strip()
         if not s or s.startswith("#"):
             continue
         parts = [p.strip().strip('"').strip("'") for p in s.split(",")]
-        if parts and all(p.lower() in _HEADER_FIELDS for p in parts if p):
-            continue  # header row
+        if _is_header(parts):
+            continue  # header row (any case, singular/plural)
         if len(parts) == 2:
             key, model = parts
             rows.append({"profile": None, "key": key, "model": model, "line": i})
@@ -253,7 +284,7 @@ class Assignments:
         """
         if path and not text:
             try:
-                with open(path, encoding="utf-8") as f:
+                with open(path, encoding="utf-8-sig") as f:  # utf-8-sig strips a BOM
                     text = f.read()
             except OSError as e:
                 return {"ok": False, "error": f"cannot read {path}: {e}"}
@@ -317,19 +348,28 @@ class Assignments:
                    for r in rows if r["key"] == "MISSING" or not r["model_ref"]
                    or r["model_ref"].startswith("catalog:")]
         out = {"profiles": rows, "ready": not missing, "missing": missing}
+        found = detect_keys_file(self.home)
+        if found:
+            warn = (" — ⚠ inside a git repo: it must stay git-ignored, never commit API keys"
+                    if found["in_git_repo"] else "")
+            out["keys_file"] = {"path": found["path"], "in_git_repo": found["in_git_repo"]}
+            out["keys_file_hint"] = (f"a keys.csv was found at {found['path']}{warn}. "
+                                     "Ask the user to confirm importing it, then call "
+                                     f"openrouter_import({{path: {found['path']!r}}}).")
         if missing:
             names = ", ".join(m["profile"] for m in missing)
+            where = "confirm importing the keys file above, or provide " if found else "provide "
             out["ask_user"] = (
                 f"API keys/models are not fully configured for: {names}. Ask the user to "
-                "provide, for each one, an OpenRouter API key and model as `key,model` "
-                "lines (or a path to a CSV file with those lines, optionally "
-                "`profile,key,model`). Then call openrouter_import with them — storage is "
+                f"{where}`key,model` lines (or `profile,key,model`), one per agent "
+                "profile. Then call openrouter_import with them — storage is "
                 "permanent and encrypted. The user may also run: "
                 "engine-ai runtime profiles set <profile> --credential-ref vault:NAME "
                 "--model <id>")
             out["how"] = ("openrouter_import({csv: 'sk-or-...,model-id\\n...' })  "
                           "or  openrouter_import({ path: '/path/keys.csv' })")
         else:
-            out["note"] = ("all profiles configured — codex_setup can now generate "
-                           "~/.codex/config.toml for Codex CLI")
+            out["note"] = ("all profiles configured — agents can build: "
+                           'engine-ai runtime build "<objective>"  (or codex_setup to '
+                           "generate ~/.codex/config.toml for Codex CLI)")
         return out

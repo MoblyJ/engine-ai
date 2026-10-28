@@ -213,6 +213,57 @@ def cmd_profiles(args) -> int:
     return 0
 
 
+def cmd_keys(args) -> int:
+    """Detect and/or import a user's keys.csv into the 10 agent profiles."""
+    from engine_core.profiles import Assignments, detect_keys_file
+    a = Assignments(HOME)
+    if args.path:
+        found = {"path": os.path.abspath(args.path)}
+    else:
+        found = detect_keys_file(HOME)
+        if not found:
+            print("no keys.csv found. Drop one at ~/.engine-ai/keys.csv or ./keys.csv with")
+            print("lines `key,model` (10 lines = 10 agent profiles) — or pass a path:")
+            print("  engine-ai runtime keys /path/to/keys.csv")
+            return 1
+    print(f"keys file: {found['path']}")
+    if found.get("in_git_repo"):
+        print("  ⚠ inside a git repo — keep it git-ignored; NEVER commit API keys")
+    out = a.import_keys(path=found["path"], set_secret=None, get_secret=None)
+    if not out.get("ok"):
+        print(f"✗ {out.get('error')}")
+        for e in out.get("errors", [])[:5]:
+            print(f"  {e}")
+        return 1
+    print(f"imported {out['imported']} key(s) — permanent, encrypted at rest:")
+    for r in out["profiles"]:
+        print(f"  {r['profile']:16} {r['key']:14} → {r['model']}")
+    return 0
+
+
+def cmd_build(args) -> int:
+    """keys.csv → 10 agents: plan (planner key) → execute per-profile → verify."""
+    from engine_core.pipeline import BuildPipeline, PipelineError
+    config = load_config(args.config) if args.config else None
+    pipeline = BuildPipeline(HOME, config)
+    try:
+        out = pipeline.run(args.objective, workspace=args.workspace,
+                           max_tasks=args.max_tasks)
+    except PipelineError as e:
+        print(f"✗ {e}", file=sys.stderr)
+        return 1
+    except ProviderError as e:
+        print(f"✗ provider error ({e.kind}): {e.message}", file=sys.stderr)
+        print("  state is checkpointed — fix and re-run the same command to resume",
+              file=sys.stderr)
+        return 2
+    print(json.dumps({k: v for k, v in out.items() if k != "results"}, indent=2)[:1500])
+    for r in out["results"]:
+        print(f"  {r.get('task', '?'):28} {r.get('status', '?')}"
+              + (f"  {str(r.get('error'))[:80]}" if r.get("error") else ""))
+    return 0 if out["complete"] == len(out["results"]) else 1
+
+
 def cmd_models(args) -> int:
     catalog = _catalog()
     if args.models_cmd == "refresh":
@@ -306,6 +357,17 @@ def main(argv=None) -> int:
     pcl.add_argument("profile")
     pr_sub.add_parser("agents", help="agent → profile mapping (engine + domain experts)")
     p.set_defaults(fn=cmd_profiles)
+
+    p = sub.add_parser("keys", help="detect/import keys.csv → the 10 agent profiles")
+    p.add_argument("path", nargs="?", help="keys.csv path (default: auto-detect)")
+    p.set_defaults(fn=cmd_keys)
+
+    p = sub.add_parser("build", help="multi-agent build: plan → execute per-profile → verify")
+    p.add_argument("objective", help="what the agents should build, in plain language")
+    p.add_argument("--workspace", help="dir to work in (default ~/.engine-ai/builds/<slug>)")
+    p.add_argument("--config", help="engine config (YAML/JSON)")
+    p.add_argument("--max-tasks", type=int, default=6)
+    p.set_defaults(fn=cmd_build)
 
     p = sub.add_parser("models", help="model catalog: list / refresh / pin")
     m_sub = p.add_subparsers(dest="models_cmd", required=True)

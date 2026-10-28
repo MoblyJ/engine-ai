@@ -23,10 +23,14 @@ engine-ai is ACTIVE. MCP server "engine-ai" tools:
     language, returns the top matching questions + accepted/top answers, cited)
   openrouter per-agent keys: openrouter_setup (checks all 10 profiles; if a key or model is
     missing it returns ask_user instructions — PROMPT THE USER for `key,model` lines or a CSV
-    path), openrouter_import (pasted CSV or file → keys encrypted in the vault PERMANENTLY,
-    model saved per profile), codex_setup (writes ~/.codex/config.toml for Codex CLI from the
-    configured profiles; auth.json untouched). If the user mentions OpenRouter keys, agent API
-    keys, or Codex setup, start with openrouter_setup.
+    path; AUTO-DETECTS a dropped keys.csv at ~/.engine-ai/keys.csv or ./keys.csv and asks the
+    user to confirm importing it), openrouter_import (pasted CSV or file → keys encrypted in
+    the vault PERMANENTLY, model saved per profile), codex_setup (writes ~/.codex/config.toml
+    for Codex CLI from the configured profiles; auth.json untouched). If the user mentions
+    OpenRouter keys, agent API keys, keys.csv, or Codex setup, start with openrouter_setup.
+  multi-agent build: once keys are set, `engine-ai runtime build "<objective>"` — the planner
+    agent decomposes it into a task graph, workers execute under their OWN key+model with real
+    file/shell tools, verification runs the project's own commands, quota pauses checkpoint.
 Slash commands: /new-app (isolated worktree build), /resume-app, /mobile-check, /deploy-check,
 /ground, /ship-live, /expert (ask a domain expert grounded in ingested knowledge),
 /research (live web search for current info, cited), /debug (fix a real error via StackOverflow,

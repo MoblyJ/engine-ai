@@ -45,7 +45,12 @@ class Policy:
                 self._check_path(val)
 
     def _check_path(self, p: str) -> None:
-        abs_p = os.path.abspath(p)
+        # relative paths are workspace-relative (a worker saying `src/x.py` means
+        # `<workspace>/src/x.py`, not whatever cwd the host process happens to have)
+        if self.root and not os.path.isabs(p):
+            abs_p = os.path.abspath(os.path.join(self.root, p))
+        else:
+            abs_p = os.path.abspath(p)
         real_p = os.path.realpath(abs_p)
         scopes = [self.root] if self.root else []
         scopes += self.permitted_paths

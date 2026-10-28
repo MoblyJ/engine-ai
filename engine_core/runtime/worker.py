@@ -88,7 +88,9 @@ class Worker:
                 if completion.tool_calls:
                     for call in completion.tool_calls[: max(0, max_calls - calls_made)]:
                         calls_made += 1
-                        result = self.executor.execute(call, context={"task_id": task_id})
+                        result = self.executor.execute(call, context={
+                            "task_id": task_id,
+                            "workspace": getattr(self.executor.policy, "root", None)})
                         messages.append(Message("tool", result["content"][:self.max_result_chars],
                                                 tool_call_id=call.get("id")))
                     self.store.checkpoint(task_id, fence, {

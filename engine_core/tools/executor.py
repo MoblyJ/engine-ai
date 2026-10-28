@@ -84,7 +84,10 @@ class Executor:
                 "ok": prior["ok"], "replayed": True}
         try:
             self.policy.check(name, args, self.registry)
-            out = entry.fn(args) if entry.read_only or args is not None else entry.fn()
+            try:  # context-aware tools (build tools) get the workspace; MCP handlers don't
+                out = entry.fn(args, context or {})
+            except TypeError:
+                out = entry.fn(args)
             ok = not (isinstance(out, dict) and out.get("ok") is False)
             if not entry.read_only:
                 self._journal_write(key, name, args_hash, ok, out)
