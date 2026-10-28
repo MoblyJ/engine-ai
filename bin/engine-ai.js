@@ -62,7 +62,7 @@ Usage:
   engine-ai update 0.16.0      safely update, pinned to a specific published version
   engine-ai doctor             check prerequisites + connection status
   engine-ai mcp                run the MCP server standalone on stdio (any MCP client can use it)
-  engine-ai runtime <cmd>      engine_core runtime CLI (plan | run | status | verify | models --help)
+  engine-ai runtime <cmd>      engine_core runtime CLI (plan | run | status | verify | models | profiles --help)
   engine-ai knowledge sync     clone + ingest the curated engineering repos into the knowledge store
   engine-ai knowledge status   show ingested domains + chunk counts
   engine-ai knowledge agents   regenerate the domain-expert subagents

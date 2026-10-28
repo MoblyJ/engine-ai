@@ -353,15 +353,31 @@ that into a provider-independent runtime (pure stdlib), so tasks can also run wi
 | `verification/` | Command runner against exact revisions + **evidence manifests** (tested SHA, commands, exit codes, artifacts by content hash) |
 | `telemetry/` | Usage/cost journal (tokens incl. cached/reasoning, calls, latency, cost) + append-only event log |
 
-Routing follows the [upgrade review](upgrade.md): **ten profiles, not ten accounts** — keys give
-attribution/revocation, not extra quota; free-only by default; quota exhaustion **pauses** (never
-rotates credentials); auth failures stop, they don't retry. Start with 2 active workers.
+Routing follows the [upgrade review](upgrade.md): **ten profiles, not ten accounts** — every agent
+gets its own profile with its own credential reference and model, but keys give attribution/
+revocation, not extra quota; free-only by default; quota exhaustion **pauses** (never rotates
+credentials); auth failures stop, they don't retry. Start with 2 active workers.
+
+**Assign a different API key + model to each agent:**
+
+```bash
+engine-ai runtime profiles list      # all 10 profiles: key status (masked), model, agents
+engine-ai runtime profiles agents    # engine agents + domain experts → profile mapping
+engine-ai runtime profiles set frontend --credential-ref vault:OPENROUTER_FRONTEND_KEY --model <id>
+engine-ai runtime profiles show frontend
+# store the key itself encrypted (never in a config file): set_secret, name OPENROUTER_FRONTEND_KEY
+```
+
+Keys live in the environment (`env:VAR`) or the AES-256-GCM vault (`vault:NAME` via `set_secret`);
+profiles store **references only**. Agents share work through the project-scoped memory store,
+bounded context packets, and the serialized integrator — each worker runs its packet under its
+own key/model and hands off structured outcomes.
 
 ```bash
 engine-ai runtime plan --graph tasks.json    # validate a task dependency graph
 engine-ai runtime models refresh             # fetch the live model catalog (network)
 engine-ai runtime models pin backend <model-id>   # pin an evaluated model ID
-engine-ai runtime run --config config.example.yaml --graph tasks.json
+engine-ai runtime run --graph tasks.json --agent engine-app-builder   # run under that agent's key+model
 engine-ai runtime status                     # task states + usage totals
 engine-ai runtime verify --path . -- pytest -q
 ```
@@ -512,7 +528,7 @@ vercel login        # Vercel
 
 ## 🧪 Verified
 
-Pure-stdlib test suite (`python3 -m unittest discover -s tests`): **172 tests** — MCP protocol
+Pure-stdlib test suite (`python3 -m unittest discover -s tests`): **190 tests** — MCP protocol
 (33 tools incl. **failure paths**: parse errors, invalid params, operational-vs-protocol errors),
 scaffolding (node/python/static · overwrite refusal · dry-run · backups), incremental RAG with line
 spans, AES-256-GCM vault, mobile-responsive audit, GitHub/Vercel auth guards, **memory pockets**

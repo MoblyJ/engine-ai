@@ -129,13 +129,26 @@ class Profile:
     requires: list = field(default_factory=list)
     read_only: bool = False
 
-    def resolve_credential(self) -> str | None:
-        """Resolve env:NAME refs — the ONLY place credentials are looked up."""
-        if not self.credential_ref:
+    def resolve_credential(self, vault_getter=None) -> str | None:
+        """Resolve a credential ref — the ONLY place keys are looked up.
+
+        env:NAME → environment; vault:NAME → the encrypted engine-ai vault
+        (set_secret); anything else is treated as a literal key (dev/tests only).
+        The resolved value never appears in prompts, config dumps, or telemetry.
+        """
+        ref = self.credential_ref
+        if not ref:
             return None
-        if self.credential_ref.startswith("env:"):
-            return os.environ.get(self.credential_ref[4:])
-        return self.credential_ref  # treated as a literal key (tests/dev only)
+        if ref.startswith("env:"):
+            return os.environ.get(ref[len("env:"):])
+        if ref.startswith("vault:"):
+            if vault_getter is None:
+                return None
+            try:
+                return vault_getter(ref[len("vault:"):])
+            except Exception:  # noqa: BLE001 - vault miss/locked → treated as unset
+                return None
+        return ref
 
 
 @dataclass
@@ -148,6 +161,7 @@ class Config:
     paid_fallback: bool = False
     quota_exhausted: str = "pause"
     profiles: dict = field(default_factory=lambda: {"backend": Profile("backend")})
+    agent_profiles: dict = field(default_factory=dict)  # agent name -> profile name
 
     @staticmethod
     def from_dict(data: dict) -> "Config":
@@ -191,6 +205,13 @@ class Config:
         if not profiles:
             raise ConfigError("at least one profile is required")
         cfg.profiles = profiles
+        agents = data.get("agents") or {}
+        if not isinstance(agents, dict):
+            raise ConfigError("agents must be a mapping of agent name -> profile name")
+        for agent, profile_name in agents.items():
+            if profile_name not in profiles:
+                raise ConfigError(f"agent {agent!r} maps to unknown profile {profile_name!r}")
+        cfg.agent_profiles = dict(agents)
         return cfg
 
     def profile(self, name: str) -> Profile:
