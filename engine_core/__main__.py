@@ -20,10 +20,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from engine_core.config import Config, ConfigError, load_config  # noqa: E402
 from engine_core.providers.base import ProviderError  # noqa: E402
-from engine_core.providers.limiter import RateLimiter  # noqa: E402
+from engine_core.providers.catalog import CatalogError  # noqa: E402
+from engine_core.providers.limiter import Limits, RateLimiter  # noqa: E402
 from engine_core.providers.openrouter import OpenRouterProvider  # noqa: E402
 from engine_core.runtime.scheduler import QuotaPaused, Scheduler  # noqa: E402
-from engine_core.runtime.state import StateStore  # noqa: E402
+from engine_core.runtime.state import StateError, StateStore  # noqa: E402
 from engine_core.runtime.task_graph import GraphError, TaskGraph, TaskSpec  # noqa: E402
 from engine_core.runtime.worker import Worker  # noqa: E402
 from engine_core.telemetry.usage import UsageJournal  # noqa: E402
@@ -32,7 +33,7 @@ from engine_core.tools.policy import Policy  # noqa: E402
 from engine_core.tools.registry import default_registry  # noqa: E402
 from engine_core.verification.runner import Verifier  # noqa: E402
 
-HOME = os.environ.get("ENGINE_AI_HOME", os.path.expanduser("~/.engine-ai"))
+HOME = os.environ.get("ENGINE_AI_HOME") or os.path.expanduser("~/.engine-ai")
 
 
 def _store() -> StateStore:
@@ -85,8 +86,12 @@ def cmd_run(args) -> int:
     store.mark_ready(store.ready_ids())
 
     profile = config.profile(args.profile)
+    # limits are account facts, not code constants: defaults reflect OpenRouter's
+    # published free tier at review time; override per account via env vars.
     limiter = RateLimiter()
-    limiter.configure(profile.account_group)
+    limiter.configure(profile.account_group, Limits(
+        requests_per_minute=int(os.environ.get("ENGINE_AI_RPM", 20)),
+        requests_per_day=int(os.environ.get("ENGINE_AI_RPD", 50))))
     catalog = _catalog()
     model_info = catalog.resolve(args.model or profile.model_ref)
     if args.free_only and not model_info.free:
@@ -135,6 +140,36 @@ def _catalog():
     return Catalog()
 
 
+def cmd_models(args) -> int:
+    catalog = _catalog()
+    if args.models_cmd == "refresh":
+        try:
+            n = catalog.refresh()
+        except Exception as e:  # noqa: BLE001 - network failure → clean CLI error
+            print(f"✗ catalog refresh failed: {e}", file=sys.stderr)
+            return 1
+        print(f"refreshed {n} models (age resets; cached at {catalog.path})")
+        return 0
+    if args.models_cmd == "pin":
+        try:
+            catalog.pin(args.name, args.model_id)
+        except CatalogError as e:
+            print(f"✗ {e}", file=sys.stderr)
+            return 1
+        print(f"pinned {args.name!r} → {args.model_id}")
+        return 0
+    # list: eligible models given the routing constraints
+    models = catalog.eligible(free_only=not args.include_paid,
+                              supports_tools=not args.all_capabilities)
+    if not models:
+        print("(no models cached — run: engine-ai runtime models refresh)")
+        return 0
+    for m in models[: int(args.limit)]:
+        tags = ("free" if m.free else f"${m.pricing_prompt:g}/M") + (", tools" if m.supports_tools else "")
+        print(f"  {m.id:48} ctx={m.context_length or '?':>8}  {tags}")
+    return 0
+
+
 def cmd_verify(args) -> int:
     verifier = Verifier()
     # run through bash so quoting/&& works as typed; segments split on &&
@@ -179,10 +214,23 @@ def main(argv=None) -> int:
     p.add_argument("command", help="command(s) to run; split '&&' into sequential checks")
     p.set_defaults(fn=cmd_verify)
 
+    p = sub.add_parser("models", help="model catalog: list / refresh / pin")
+    m_sub = p.add_subparsers(dest="models_cmd", required=True)
+    pl = m_sub.add_parser("list", help="list eligible models (free-only by default)")
+    pl.add_argument("--include-paid", action="store_true")
+    pl.add_argument("--all-capabilities", action="store_true",
+                    help="don't require tool support")
+    pl.add_argument("--limit", default=25)
+    m_sub.add_parser("refresh", help="fetch the live catalog (network)")
+    pp = m_sub.add_parser("pin", help="pin a catalog:<name> reference to a model ID")
+    pp.add_argument("name")
+    pp.add_argument("model_id")
+    p.set_defaults(fn=cmd_models)
+
     args = ap.parse_args(argv)
     try:
         return args.fn(args)
-    except (ConfigError, GraphError) as e:
+    except (ConfigError, GraphError, CatalogError, StateError) as e:
         print(f"✗ {e}", file=sys.stderr)
         return 1
     except ProviderError as e:

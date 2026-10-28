@@ -359,6 +359,8 @@ rotates credentials); auth failures stop, they don't retry. Start with 2 active 
 
 ```bash
 engine-ai runtime plan --graph tasks.json    # validate a task dependency graph
+engine-ai runtime models refresh             # fetch the live model catalog (network)
+engine-ai runtime models pin backend <model-id>   # pin an evaluated model ID
 engine-ai runtime run --config config.example.yaml --graph tasks.json
 engine-ai runtime status                     # task states + usage totals
 engine-ai runtime verify --path . -- pytest -q
@@ -510,7 +512,7 @@ vercel login        # Vercel
 
 ## 🧪 Verified
 
-Pure-stdlib test suite (`python3 -m unittest discover -s tests`): **165 tests** — MCP protocol
+Pure-stdlib test suite (`python3 -m unittest discover -s tests`): **172 tests** — MCP protocol
 (33 tools incl. **failure paths**: parse errors, invalid params, operational-vs-protocol errors),
 scaffolding (node/python/static · overwrite refusal · dry-run · backups), incremental RAG with line
 spans, AES-256-GCM vault, mobile-responsive audit, GitHub/Vercel auth guards, **memory pockets**
