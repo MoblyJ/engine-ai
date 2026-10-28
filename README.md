@@ -403,8 +403,12 @@ Drop a `keys.csv` anywhere conventional (`~/.engine-ai/keys.csv`, `./keys.csv`, 
 `$ENGINE_AI_KEYS_CSV`) with one `key,model` line per agent profile (a header row, `#`
 comments, BOM/CRLF from Excel are all tolerated). It is **auto-detected**: `openrouter_setup`
 reports it (with a warning if it sits inside a git repo — it is git-ignored by this toolkit and
-must never be committed) and Claude asks you to confirm the import. Then the agents take over —
-ideation, planning, code, and verification all come from the agents under their own keys:
+must never be committed) and Claude asks you to confirm the import. On a **fresh setup**, a
+keys.csv at `~/.engine-ai/keys.csv` (or `$ENGINE_AI_KEYS_CSV`) is **auto-assigned the moment a
+session starts** — every agent ready with no prompt; partial/hand-made setups are never
+overwritten, and files found only in the current directory always ask first. Then the agents
+take over — ideation, planning, code, and verification all come from the agents under their own
+keys:
 
 ```bash
 engine-ai runtime keys               # detect + import keys.csv → the 10 profiles
@@ -572,7 +576,7 @@ vercel login        # Vercel
 
 ## 🧪 Verified
 
-Pure-stdlib test suite (`python3 -m unittest discover -s tests`): **239 tests** — MCP protocol
+Pure-stdlib test suite (`python3 -m unittest discover -s tests`): **241 tests** — MCP protocol
 (33 tools incl. **failure paths**: parse errors, invalid params, operational-vs-protocol errors),
 scaffolding (node/python/static · overwrite refusal · dry-run · backups), incremental RAG with line
 spans, AES-256-GCM vault, mobile-responsive audit, GitHub/Vercel auth guards, **memory pockets**

@@ -349,6 +349,43 @@ def _codex_setup(a):
     return out
 
 
+def _autoload_keys():
+    """Session-start auto-assign: if NO profile is configured yet and a keys.csv sits
+    in a DELIBERATE location ($ENGINE_AI_KEYS_CSV or ~/.engine-ai/keys.csv), import it
+    so every agent is ready the moment a session opens.
+
+    Only ever fills a FRESH setup — existing assignments are never overwritten
+    (re-assignment stays an explicit openrouter_import / profiles set). The current
+    working directory is deliberately NOT consulted here: silently importing whatever
+    keys.csv happens to sit next to the server is too ambient (a repo checkout, a test
+    run); cwd files surface through openrouter_setup's keys_file hint instead, which
+    asks the user to confirm."""
+    try:
+        from engine_core.profiles import Assignments
+        candidates = []
+        env = os.environ.get("ENGINE_AI_KEYS_CSV")
+        if env:
+            candidates.append(env)
+        candidates.append(os.path.join(HOME, "keys.csv"))
+        path = next((c for c in candidates if c and os.path.isfile(c)), None)
+        if not path:
+            return
+        assignments = Assignments(HOME)
+        payload = assignments.setup_payload(getter=ENGINE.get_secret)
+        if not payload["missing"]:
+            return  # already fully configured
+        if any(r["key"] != "MISSING" for r in payload["profiles"]):
+            return  # partially configured by hand — require explicit confirmation
+        out = assignments.import_keys(path=path,
+                                      set_secret=ENGINE.set_secret,
+                                      get_secret=ENGINE.get_secret)
+        if out.get("ok"):
+            print(f"[engine-ai] auto-assigned {out['imported']} agent key(s) from "
+                  f"{path} (permanent, encrypted)", file=sys.stderr)
+    except Exception:  # noqa: BLE001 - auto-assign is best-effort, never blocks startup
+        pass
+
+
 # ----------------------------------------------------------- request validation
 _TYPES = {"string": str, "integer": int, "boolean": bool, "object": dict,
           "array": list, "number": (int, float)}
@@ -437,6 +474,7 @@ def handle(msg) -> dict | None:
 
 
 def main():
+    _autoload_keys()  # session start: a fresh setup + a dropped keys.csv → auto-assign
     for line in sys.stdin:
         line = line.strip()
         if not line:

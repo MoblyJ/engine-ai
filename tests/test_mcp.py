@@ -241,6 +241,44 @@ class TestMCP(unittest.TestCase):
         self.assertIn("key,model", s["ask_user"])
         self.assertEqual(len(s["missing"]), 10)
 
+    def test_keys_csv_auto_assigned_on_session_start(self):
+        """Server startup auto-imports a dropped keys.csv when NO profile is set."""
+        home = tempfile.mkdtemp()
+        with open(os.path.join(home, "keys.csv"), "w") as f:
+            f.write("api keys,models\n" + "".join(f"sk-auto-{i},m/{i}\n" for i in range(1, 11)))
+        cli = MCPClient(home)
+        try:
+            s, _ = cli.tool("openrouter_setup", {})
+            self.assertTrue(s["ready"], "auto-assign must complete before the first tool call")
+            self.assertEqual(s["missing"], [])
+            configured = {r["profile"]: r for r in s["profiles"] if r["key"] != "MISSING"}
+            self.assertEqual(len(configured), 10)
+            self.assertEqual(configured["planner"]["model_ref"], "m/1",
+                             "2-column lines fill profiles in DEFAULT_TEN order")
+        finally:
+            cli.close()
+
+    def test_partial_setup_is_never_auto_overwritten(self):
+        """Hand-configured profiles stay untouched by the session-start auto-assign."""
+        home = tempfile.mkdtemp()
+        cli = MCPClient(home)
+        try:
+            cli.tool("openrouter_import", {"csv": "backend,sk-mine,m/mine\n"})
+        finally:
+            cli.close()
+        with open(os.path.join(home, "keys.csv"), "w") as f:
+            f.write("sk-other,m/other\n")
+        cli = MCPClient(home)
+        try:
+            s, _ = cli.tool("openrouter_setup", {})
+            byp = {r["profile"]: r for r in s["profiles"]}
+            self.assertEqual(byp["backend"]["model_ref"], "m/mine",
+                             "existing assignment preserved")
+            self.assertEqual(byp["planner"]["key"], "MISSING",
+                             "partial setups require explicit import, not auto-assign")
+        finally:
+            cli.close()
+
     def test_openrouter_import_pasted_csv_then_permanent(self):
         csv_text = ("profile,key,model\n"
                     "backend,sk-or-v1-backend123,deepseek/deepseek-r1\n"
