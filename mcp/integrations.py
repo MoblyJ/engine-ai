@@ -7,6 +7,12 @@
 Auth note: GitHub/Vercel require their OWN credentials — there is no way to reuse the
 Google account connected to Claude. `git_publish`/`vercel_deploy` detect a missing login
 and return a clear `needs_auth` payload with the exact command to run, instead of failing.
+
+v0.16 (per the upgrade review): git_publish is git-worktree-aware (a worktree has a `.git`
+FILE, not a directory, and shares its config with the parent repo), every subprocess
+result is checked, staging/commit failures are reported instead of swallowed, and an
+existing `origin` remote is reused (push) instead of always attempting repo creation —
+so publishing two apps never clobbers the first one's remote.
 """
 
 from __future__ import annotations
@@ -24,6 +30,31 @@ def _run(cmd, cwd=None, timeout=300, env=None):
     return p.returncode, p.stdout.strip(), p.stderr.strip()
 
 
+# ----------------------------------------------------------------- git helpers
+def git_state(path: str) -> dict:
+    """Describe `path` as a git working tree. Works for normal repos AND worktrees:
+    inside a worktree, --git-dir points at <main>/.git/worktrees/<name> while
+    --git-common-dir points at the main .git — they differ only in worktrees."""
+    code, out, err = _run(["git", "rev-parse", "--is-inside-work-tree"], cwd=path, timeout=20)
+    if code != 0:
+        return {"is_repo": False, "is_worktree": False, "top": None}
+    code, top, _ = _run(["git", "rev-parse", "--show-toplevel"], cwd=path, timeout=20)
+    _, gitdir, _ = _run(["git", "rev-parse", "--git-dir"], cwd=path, timeout=20)
+    _, commondir, _ = _run(["git", "rev-parse", "--git-common-dir"], cwd=path, timeout=20)
+
+    def _abs(p):
+        return os.path.normpath(p if p and os.path.isabs(p) else os.path.join(path, p or ""))
+    gitdir_abs, commondir_abs = _abs(gitdir), _abs(commondir)
+    is_worktree = bool(gitdir and commondir and gitdir_abs != commondir_abs)
+    return {"is_repo": True, "is_worktree": is_worktree, "top": top or path,
+            "git_dir": gitdir_abs, "common_dir": commondir_abs}
+
+
+def origin_url(path: str) -> str | None:
+    code, out, _ = _run(["git", "remote", "get-url", "origin"], cwd=path, timeout=20)
+    return out if code == 0 and out else None
+
+
 # ----------------------------------------------------------------- GitHub
 def gh_status() -> dict:
     if not shutil.which("gh"):
@@ -37,7 +68,12 @@ def gh_status() -> dict:
 
 
 def git_publish(path: str, repo_name: str, private: bool = True) -> dict:
-    """Create a GitHub repo named `repo_name` from `path` and push it."""
+    """Create a GitHub repo named `repo_name` from `path` and push it.
+
+    Idempotent: if `origin` already points at a remote, this pushes to it instead of
+    creating a new repo (so re-publishing or publishing from a worktree never steals
+    the app's existing remote).
+    """
     st = gh_status()
     if not st.get("ok"):
         return st
@@ -47,21 +83,53 @@ def git_publish(path: str, repo_name: str, private: bool = True) -> dict:
     if not os.path.isdir(path):
         return {"ok": False, "message": f"not a directory: {path}"}
 
-    # ensure a git repo with at least one commit
-    if not os.path.isdir(os.path.join(path, ".git")):
-        _run(["git", "init", "-b", "main"], cwd=path)
+    gs = git_state(path)
+    if not gs["is_repo"]:
+        code, _, err = _run(["git", "init", "-b", "main"], cwd=path)
+        if code != 0:
+            return {"ok": False, "message": "git init failed", "detail": err}
     # local identity fallback so the commit doesn't fail on a fresh box
-    if _run(["git", "config", "user.email"], cwd=path)[1] == "":
+    if _run(["git", "config", "user.email"], cwd=path, timeout=20)[1] == "":
         _run(["git", "config", "user.email", "agent@engine-ai.local"], cwd=path)
         _run(["git", "config", "user.name", "engine-ai"], cwd=path)
-    _run(["git", "add", "-A"], cwd=path)
-    # commit only if there's something staged
-    if _run(["git", "diff", "--cached", "--quiet"], cwd=path)[0] != 0:
-        _run(["git", "commit", "-m", "initial commit (engine-ai)"], cwd=path)
+
+    # explicit staging — a failure here must not be swallowed into a false success
+    code, out, err = _run(["git", "add", "-A"], cwd=path)
+    if code != 0:
+        return {"ok": False, "message": "git add failed", "detail": err or out}
+    code, _, _ = _run(["git", "diff", "--cached", "--quiet"], cwd=path, timeout=20)
+    if code != 0:  # something staged → commit it
+        code, out, err = _run(["git", "commit", "-m", "initial commit (engine-ai)"], cwd=path)
+        if code != 0:
+            return {"ok": False, "message": "git commit failed", "detail": err or out}
+
+    existing_origin = origin_url(path)
+    if existing_origin:
+        # already connected: push, don't re-create
+        code, out, err = _run(["git", "push", "-u", "origin", "HEAD"], cwd=path, timeout=180)
+        if code != 0:
+            return {"ok": False, "message": "git push to existing origin failed",
+                    "detail": err or out, "url": existing_origin}
+        return {"ok": True, "repo": repo_name, "url": existing_origin, "private": private,
+                "reused_remote": True, "worktree": gs["is_worktree"]}
 
     vis = "--private" if private else "--public"
     code, out, err = _run(["gh", "repo", "create", repo_name, "--source", path,
                            "--push", vis], cwd=path, timeout=180)
+    if code != 0 and re.search(r"(?i)already exists", err + out):
+        # repo exists on GitHub but isn't our remote yet → attach and push
+        owner, _, oerr = _run(["gh", "api", "user", "-q", ".login"], cwd=path, timeout=30)
+        if owner:
+            full = f"{owner}/{repo_name}"
+            code2, _, err2 = _run(["git", "remote", "add", "origin",
+                                   f"https://github.com/{full}.git"], cwd=path, timeout=20)
+            if code2 == 0:
+                code2, _, err2 = _run(["git", "push", "-u", "origin", "HEAD"], cwd=path, timeout=180)
+            if code2 == 0:
+                return {"ok": True, "repo": repo_name, "url": f"https://github.com/{full}",
+                        "private": private, "attached_existing": True, "worktree": gs["is_worktree"]}
+        return {"ok": False, "message": "repo already exists on GitHub and could not be attached",
+                "detail": err or out}
     if code != 0:
         return {"ok": False, "message": "gh repo create failed", "detail": err or out,
                 "hint": "repo name may already exist, or token lacks 'repo' scope"}
@@ -72,7 +140,8 @@ def git_publish(path: str, repo_name: str, private: bool = True) -> dict:
     if not url:
         code2, out2, _ = _run(["gh", "repo", "view", repo_name, "--json", "url", "-q", ".url"], cwd=path)
         url = out2 if code2 == 0 else f"(created '{repo_name}')"
-    return {"ok": True, "repo": repo_name, "url": url, "private": private}
+    return {"ok": True, "repo": repo_name, "url": url, "private": private,
+            "worktree": gs["is_worktree"]}
 
 
 # ----------------------------------------------------------------- Vercel
@@ -122,7 +191,11 @@ _SKIP = {".git", "node_modules", "dist", "build", ".next", ".venv", "__pycache__
 
 
 def responsive_audit(path: str) -> dict:
-    """Static mobile-responsiveness audit of a frontend project."""
+    """Static mobile-responsiveness audit of a frontend project.
+
+    Static hints only — it can say "looks responsive", never "verified on a device".
+    Pair it with a real browser journey before claiming mobile-readiness.
+    """
     path = os.path.abspath(path)
     html, css = [], []
     for dp, dirs, files in os.walk(path):
@@ -165,4 +238,5 @@ def responsive_audit(path: str) -> dict:
         findings.append("Images lack `srcset`/`max-width:100%` — they may overflow on small screens.")
     score = round(100 * sum(checks.values()) / len(checks))
     return {"applicable": True, "score": score, "checks": checks, "findings": findings,
-            "verdict": "mobile-ready" if score >= 80 and not findings else "needs work"}
+            "verdict": "mobile-ready" if score >= 80 and not findings else "needs work",
+            "basis": "static analysis — not a browser-verified journey"}

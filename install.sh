@@ -41,42 +41,82 @@ detect_claude() {
   return 1
 }
 
-merge_hook() { # add or remove our SessionStart hook in settings.json (valid JSON either way)
+merge_hook() { # add or remove our SessionStart hook in settings.json — atomically, ownership-aware
   local action="$1"
   mkdir -p "$CLAUDE_DIR"
-  [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
+  if [ ! -f "$SETTINGS" ]; then
+    printf '{}\n' > "$SETTINGS"
+  fi
   cp "$SETTINGS" "$SETTINGS.scc-backup.$(date +%s)" 2>/dev/null || true
-  python3 - "$SETTINGS" "$HOOK" "$action" <<'PY'
-import json, sys
+  # NOTE: a malformed settings.json is PRESERVED, never clobbered with {}. The hook
+  # is skipped with a clear error and the rest of the install continues.
+  if python3 - "$SETTINGS" "$HOOK" "$action" <<'PY'
+import json, os, stat, sys, tempfile, time
 path, hook, action = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
-    cfg = json.load(open(path))
-except Exception:
-    cfg = {}
+    with open(path, encoding="utf-8") as f:
+        cfg = json.load(f)
+except Exception as e:
+    print(f"ERROR: {path} is not valid JSON ({e}) — left untouched, hook NOT installed.")
+    sys.exit(2)
+if not isinstance(cfg, dict):
+    print(f"ERROR: {path} is not a JSON object — left untouched, hook NOT installed.")
+    sys.exit(2)
+
 cmd = f"bash {hook}"
 hooks = cfg.setdefault("hooks", {})
 ss = hooks.setdefault("SessionStart", [])
-# Drop any existing entry that references OUR hook script — matched by the
-# stable "hooks/session-start.sh" suffix, not the full absolute path. The
-# absolute path changes across reinstalls (nvm gives each Node version its
-# own global node_modules dir, and repeated uninstall/reinstall cycles can
-# each land at a different location), so an exact-string match here would
-# never recognize an old install's entry as "ours" and would just keep
-# appending a new one forever, leaving stale entries pointing at directories
-# that no longer exist. This also retroactively cleans up any such stale
-# entries already accumulated in settings.json the next time this runs.
+# Remove ONLY our hook command from each group (matched by the stable
+# "hooks/session-start.sh" suffix, not the full absolute path — the absolute
+# path changes across reinstalls). Other hooks in the same group are kept;
+# groups left with no hooks at all are dropped. This also retroactively
+# cleans stale entries from earlier installs without nuking foreign ones.
 MARKER = "hooks/session-start.sh"
-def has_ours(group):
-    return any(MARKER in h.get("command", "") for h in group.get("hooks", []))
-ss = [g for g in ss if not has_ours(g)]
+changed = False
+for g in ss:
+    keep = [h for h in g.get("hooks", []) if MARKER not in h.get("command", "")]
+    if len(keep) != len(g.get("hooks", [])):
+        changed = True
+    g["hooks"] = keep
+ss[:] = [g for g in ss if g.get("hooks")]
 if action == "add":
-    ss.append({"hooks":[{"type":"command","command":cmd}]})
+    ss.append({"hooks": [{"type": "command", "command": cmd}]})
+    changed = True
 hooks["SessionStart"] = ss
 if not ss: hooks.pop("SessionStart", None)
 if not hooks: cfg.pop("hooks", None)
-json.dump(cfg, open(path,"w"), indent=2)
-print("hook " + ("added" if action=="add" else "removed"))
+
+# Atomic + ownership-aware write: temp file in the same dir, copy the original's
+# mode (and owner when we're allowed to), then rename over the original.
+try:
+    st = os.stat(path)
+except OSError:
+    st = None
+fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".settings.", suffix=".json")
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
+        f.write("\n")
+    if st is not None:
+        os.chmod(tmp, stat.S_IMODE(st.st_mode))
+        try:
+            os.chown(tmp, st.st_uid, st.st_gid)
+        except (PermissionError, OSError):
+            pass  # not root / not our file — mode+content are still preserved
+    os.replace(tmp, path)
+except BaseException:
+    try: os.unlink(tmp)
+    except OSError: pass
+    raise
+print("hook " + ("added" if action == "add" and changed else "updated" if changed else "no-change"))
 PY
+  then
+    return 0
+  else
+    err "settings.json unreadable/invalid — SessionStart hook NOT installed (file preserved)."
+    err "  fix it manually (e.g.: python3 -m json.tool $SETTINGS), then re-run: engine-ai connect"
+    return 1  # non-fatal to the install as a whole: skills/commands/MCP still install
+  fi
 }
 
 link_dir() { # link_dir <srcdir> <destdir> <suffix-filter>
@@ -123,7 +163,7 @@ do_install() {
   link_dir "$REPO_DIR/agents" "$AGENTS_DIR" ".md"
   ok "agents linked → $AGENTS_DIR (shows in Claude Code /agents)"
   chmod +x "$HOOK" "$REPO_DIR/mcp/forge_mcp.py" 2>/dev/null || true
-  merge_hook add >/dev/null && ok "SessionStart activation hook installed"
+  if merge_hook add >/dev/null; then ok "SessionStart activation hook installed"; fi
   register_mcp
   if [ "${1:-}" = "--import-siblings" ]; then
     info "importing skills from sibling repos…"
@@ -152,7 +192,7 @@ do_uninstall() {
   unlink_from "$SKILLS_DIR"; ok "skills unlinked"
   unlink_from "$CMDS_DIR"; ok "commands unlinked"
   unlink_from "$AGENTS_DIR"; ok "agents unlinked"
-  merge_hook remove >/dev/null && ok "activation hook removed"
+  if merge_hook remove >/dev/null; then ok "activation hook removed"; fi
   claude mcp remove -s user "$MCP_NAME" >/dev/null 2>&1 || claude mcp remove "$MCP_NAME" >/dev/null 2>&1 || true
   ok "MCP server removed"
   ok "done (settings backups kept as $SETTINGS.scc-backup.*)"

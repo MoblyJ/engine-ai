@@ -1,0 +1,41 @@
+# engine-ai runtime config (v0.16) — ten profiles, NOT ten accounts (see upgrade.md §4).
+#
+# Keys give attribution/revocation/spending separation, not extra quota: OpenRouter's
+# terms prohibit multiple accounts by one user to circumvent limits, and extra keys do
+# not raise rate limits. All three keys below share ONE account budget (team-primary).
+#
+# Free limits move: configure them from your account's limits page, don't trust code
+# defaults. Default free-only + no paid fallback: paid escalation requires an explicit
+# allowlist + budget here.
+version: 1
+execution:
+  max_active_workers: 2
+  max_build_processes: 1
+  max_model_turns_per_task: 8
+routing:
+  free_only: true
+  paid_fallback: false
+  quota_exhausted: pause
+profiles:
+  frontend:
+    provider: openrouter
+    credential_ref: env:OPENROUTER_FRONTEND_KEY
+    account_group: team-primary
+    model_ref: catalog:validated-frontend-model
+    input_target_tokens: 12000
+    max_output_tokens: 4000
+    requires: [tools]
+  backend:
+    provider: openrouter
+    credential_ref: env:OPENROUTER_BACKEND_KEY
+    account_group: team-primary
+    model_ref: catalog:validated-backend-model
+    input_target_tokens: 16000
+    max_output_tokens: 4000
+    requires: [tools]
+  reviewer:
+    provider: openrouter
+    credential_ref: env:OPENROUTER_REVIEW_KEY
+    account_group: team-primary
+    model_ref: catalog:validated-review-model
+    read_only: true

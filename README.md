@@ -87,7 +87,7 @@ claude mcp list        # → engine-ai … ✔ Connected
 > that machine. Fix:
 > ```bash
 > echo 'export PATH="$(npm prefix -g)/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
-> # or run it directly:  npx engine-ai doctor
+> # or run it directly:  npx @okoboji/engine-ai doctor
 > ```
 
 > **New tools / `/agents` / commands not showing after an update?** Claude Code loads them at session
@@ -178,11 +178,11 @@ system-design, ml, llm, security, …)
 
 </td><td valign="top">
 
-**MCP tools** (31)
+**MCP tools** (33)
 
 🏗️ *Build / ship* — `scaffold_app` ·
-`deploy_readiness` · `responsive_audit` ·
-`git_publish` · `vercel_deploy`
+`deploy_readiness` · `deploy_verify` ·
+`responsive_audit` · `git_publish` · `vercel_deploy`
 
 🔎 *Repo / skills* — `index_repo` ·
 `search_repo` · `list_skills` · `get_skill` ·
@@ -191,7 +191,7 @@ system-design, ml, llm, security, …)
 🔐 *Secrets* — `set_secret` · `list_secrets`
 
 🧠 *Memory pockets* — `memory_save` ·
-`memory_recall` · `memory_context` ·
+`memory_recall` · `memory_context` · `memory_get` ·
 `memory_list` · `memory_forget`
 
 📦 *App sessions (worktrees)* — `app_create` ·
@@ -223,7 +223,7 @@ an **agent-to-agent (A2A) loop**. Each has its own context and its own tool set 
 | Agent | What it does | When it runs | Its tools |
 |---|---|---|---|
 | 🧭 **engine-orchestrator** | The lead. For any "build/ship an app" request it assembles **full context** and delegates the others in order: recall → ground → build → mobile → ship → save. | `/new-app` or any build request | `Task`, R/W/E, Bash, `memory_recall`/`memory_save`, `index_repo`/`search_repo`, `list_skills`/`get_skill` |
-| 🏗️ **engine-app-builder** | Scaffolds, implements, tests, and gates the app to **deploy-readiness 100**. | mid-loop, or "build an app" | `scaffold_app`, `deploy_readiness`, `search_repo`, `set_secret`, `memory_recall` + R/W/E, Bash |
+| 🏗️ **engine-app-builder** | Scaffolds, implements, tests, and gates the app to **verified deployability** (`deploy_verify` evidence, not just a readiness score). | mid-loop, or "build an app" | `scaffold_app`, `deploy_readiness`, `deploy_verify`, `search_repo`, `set_secret`, `memory_recall` + R/W/E, Bash |
 | 📱 **engine-mobile** | Audits & fixes mobile responsiveness; recalls/saves mobile decisions to the session. | mid-loop, or `/mobile-check` | `responsive_audit`, `memory_context`/`recall`/`save`, `app_find`/`app_update` + R/W/E, Bash |
 | 🚀 **engine-deployer** | Publishes to **GitHub** + deploys to **Vercel**; asks for the repo name; never bypasses auth. | mid-loop, or `/ship-live` | `git_publish`, `vercel_deploy`, `deploy_readiness` + Read, Bash |
 | 🔎 **engine-grounder** | Indexes the repo and returns the relevant code/docs (RAG); saves the grounding to memory. | before edits, or `/ground` | `index_repo`, `search_repo`, `memory_context`/`recall`/`save`, `app_find` + Read, Bash |
@@ -249,7 +249,7 @@ has memory bookends (recall first, save last) so work evolves.
 
 | Skill | What it enforces | Auto-fires when you… |
 |---|---|---|
-| **deployable-app** | recall + domain knowledge → scaffold → implement → **test** → readiness 100 → mobile → secrets → publish → deploy → save. "Done" only when tests pass, readiness = 100, and the container answers `/healthz`. | ask to build/create an app, API, or site |
+| **deployable-app** | recall + domain knowledge → scaffold → implement → **test** → readiness + `deploy_verify` evidence → mobile → secrets → publish → deploy → save. "Done" only when the project's own test command exits 0 at the current commit and the checklist is covered. | ask to build/create an app, API, or site |
 | **mobile-responsive** | recall → audit → fix (viewport, `@media` 640/768/1024, fluid units, tap targets ≥44px, responsive images) → verify at 390/768px → save | build/review any UI, or say mobile/responsive/phone |
 | **publish-and-deploy** | check tests + readiness → **GitHub** (asks name) → **Vercel** → verify the live URL → save | say push, deploy, go live, or ship |
 | **expert-answer** | `suggest_experts` → `context_pack` / domain expert → **cited** recommendation with tradeoffs → save | ask "how should I design/architect/scale/secure…", best practices, or X vs Y |
@@ -276,57 +276,93 @@ status across all of them.
 | `/research <q>` | `memory_context` → `web_search` → synthesize, cited by source URL → `memory_save` |
 | `/debug <error>` | `memory_context` → `so_debug` → apply + adapt fix → **verify it passes** → `memory_save` |
 
-## 🧰 MCP tools — 27 (the agent calls these; you ask in English)
+## 🧰 MCP tools — 33 (the agent calls these; you ask in English)
 
 | Group | Tool | Purpose |
 |---|---|---|
-| 🏗️ Build/ship | `scaffold_app` | write a deployable skeleton (node-api / python-api / static): server + `/healthz` + tests + Dockerfile + CI + `.env.example` |
-| | `deploy_readiness` | score deployability + list exactly what's missing |
-| | `responsive_audit` | static mobile-responsiveness score + findings |
-| | `git_publish` | create a GitHub repo and push (uses your `gh` login; returns `needs_auth` if not logged in) |
+| 🏗️ Build/ship | `scaffold_app` | write a deployable skeleton (node-api / python-api / static): server + `/healthz` + tests + Dockerfile + CI + `.env.example`. Refuses to overwrite existing files unless `replace=true` (originals kept as `*.engine-ai.bak`); `dry_run=true` previews |
+| | `deploy_readiness` | deployability **inventory** + parsed **evidence** (declared scripts, test framework, CI, exact commit) + what's missing |
+| | `deploy_verify` | **execute** the project's own test command and return an evidence manifest (commands, exit codes, durations) bound to the commit |
+| | `responsive_audit` | static mobile-responsiveness score + findings (static hints — not a browser-verified journey) |
+| | `git_publish` | create a GitHub repo and push; **idempotent** — reuses an existing `origin` instead of re-creating; worktree-aware |
 | | `vercel_deploy` | deploy and return the live URL (returns `needs_auth` if not logged in) |
-| 🔎 Repo/skills | `index_repo` / `search_repo` | build + query a repo-aware knowledge index (RAG grounding) |
+| 🔎 Repo/skills | `index_repo` / `search_repo` | build + query a repo-aware index — **incremental** (only changed files re-embedded) and hits carry **line spans** |
 | | `list_skills` / `get_skill` | browse the workflow library |
 | | `import_repo_skills` | ingest more `SKILL.md` skills from any repo |
-| 🔐 Secrets | `set_secret` / `list_secrets` | encrypted-at-rest secrets vault (lists names only, never values) |
-| 🧠 Memory | `memory_save` | save a keyword-tagged pocket; similar keywords **evolve** the existing one |
-| | `memory_recall` / `memory_context` | hybrid keyword+embedding recall; merges the closest pockets' memory + data |
+| 🔐 Secrets | `set_secret` / `list_secrets` | encrypted-at-rest secrets vault (**AES-256-GCM**; lists names only, never values) |
+| 🧠 Memory | `memory_save` | save a keyword-tagged pocket — **immutable and project-scoped**; pass `supersedes=<id>` to explicitly retire an outdated one; `kind`: fact/decision/idea/error/note |
+| | `memory_recall` / `memory_context` | hybrid keyword+embedding recall within one project; retired pockets excluded; bounded previews |
+| | `memory_get` | fetch a pocket's full text + provenance + supersede chain |
 | | `memory_list` / `memory_forget` | list / delete pockets |
-| 📦 App sessions | `app_create` | start an app in its own **git worktree** (branch + folder) |
-| | `app_list` / `app_resume` | list sessions (2-line summaries) / reopen one with folder + memory |
+| 📦 App sessions | `app_create` | start an app in its own **git worktree** (branch + folder), recording the actual branch + base SHA |
+| | `app_list` / `app_resume` | list sessions (2-line summaries) / reopen one with folder + memory + drift check |
 | | `app_update` | save a session's 2-line summary + keywords |
 | | `app_find` | which app session a working dir belongs to (for session-aware commands) |
-| 🎓 Knowledge | `knowledge_ingest` | clone/ingest a repo into the domain-tagged FTS5 store |
+| 🎓 Knowledge | `knowledge_ingest` | clone/ingest a repo into the domain-tagged FTS5 store (records the source commit; `refresh=true` to update) |
 | | `knowledge_search` | BM25 search the ingested knowledge, optionally by domain |
-| | `knowledge_domains` | list ingested domains + chunk/repo counts |
-| | `context_pack` | **the "perfect context"**: prior memory + retrieved domain knowledge in one blob |
-| | `suggest_experts` | deterministic router: request → ranked `domain-<slug>` experts (+ whether each has knowledge) |
+| | `knowledge_domains` | list ingested domains + chunk/repo counts + source freshness |
+| | `context_pack` | prior memory + retrieved knowledge compiled **within a token budget** (default ~6k tokens) |
+| | `suggest_experts` | deterministic router: request → ranked `domain-<slug>` experts (max 5, word-boundary matching) + task profile + worker-profile mapping |
 
 ---
 
 ## 🧠 Memory pockets — apps that *evolve* across prompts
 
 Inspired by **[HelixDB](https://github.com/helixdb/helix-db)** (graph + vector AI memory), reduced to a
-tiny Python/SQLite store. Each **pocket** is a chunk of context tagged with **keywords**; recall is
-hybrid (keyword overlap **+** embedding similarity). **If two or more pockets share keywords, engine-ai
-uses the closest ones and merges BOTH their memory and data** — so every new prompt builds on the last
-instead of starting over.
+tiny Python/SQLite store. Each **pocket** is an **immutable record** tagged with **keywords**, a
+**kind** (`fact` / `decision` / `idea` / `error` / `note`), a **project**, and optional provenance.
+Recall is hybrid (keyword overlap **+** embedding similarity) within one project — facts from one
+project never leak into another.
+
+**Nothing merges implicitly.** Records never get merged just because their keywords look similar;
+when a decision changes, save the new one with `supersedes=<old id>` — the old pocket is retired from
+recall but stays retrievable (with its full chain) via `memory_get`, so evidence is never destroyed.
+Recall returns bounded previews; `memory_get` fetches full text on demand.
 
 ```mermaid
 flowchart LR
-  P["prompt + keywords"] --> R[memory_recall]
-  R -->|2+ share keywords| M[merge closest: memory + data]
-  R -->|else| S[single closest]
-  M --> C[full-context build]
-  S --> C
+  P["prompt + keywords + project"] --> R[memory_recall]
+  R --> S[ranked pockets in THIS project]
+  S -->|need full text| G[memory_get]
+  S --> C[full-context build]
+  G --> C
   C --> B[engine-app-builder]
-  B --> W[memory_save → evolves the pocket]
+  B --> W["memory_save kind=fact/decision<br/>(supersedes= to retire outdated)"]
   W -.-> R
 ```
 
 The **engine-orchestrator** runs this as an **agent-to-agent (A2A) loop**: recall memory → ground in
 the repo → plan → build → mobile → ship → save memory. Each agent's output feeds the next, so the
 final prompt is assembled in **full context**. Stored at `~/.engine-ai/memory.db`.
+
+---
+
+## ⚙️ engine_core — the standalone runtime (new in v0.16)
+
+Claude Code owns the model/tool loop for the tools above. **`engine_core/`** is the extraction of
+that into a provider-independent runtime (pure stdlib), so tasks can also run without Claude Code:
+
+| Layer | What it owns |
+|---|---|
+| `providers/` | OpenRouter/local adapters, fetched+validated model catalog with **pinned** model IDs, per-account-group rate limiting with atomic reservation, typed errors (auth/quota/rate-limit/network), Retry-After honored |
+| `runtime/` | TaskSpec dependency graphs (cycle/unknown-dep validation), durable state with **leases + fencing tokens**, scheduler bounded by `max_active_workers`, worker loop with turn/call budgets and checkpoints |
+| `context/` | Budgeted **context packets** (objective, acceptance, permitted paths, base SHA, code spans, verified decisions, latest failure), exact-path/symbol → search → neighbor retrieval, symbol spans with file hashes |
+| `memory/` | Project-scoped memory facade — separate `fact`/`decision`/`idea`/`error` kinds; a model claim is not verified evidence |
+| `workspaces/` | Git task worktrees (checked subprocess results, actual-branch validation) + the **single serialized integrator** (file-locked; conflicts raise explicit resolution tasks; failed verification reverts the merge) |
+| `tools/` | Registry + **policy-enforcing executor** (a `read_only` profile physically cannot call a writing tool) + effect journal (no repeated writes after transport failures) |
+| `verification/` | Command runner against exact revisions + **evidence manifests** (tested SHA, commands, exit codes, artifacts by content hash) |
+| `telemetry/` | Usage/cost journal (tokens incl. cached/reasoning, calls, latency, cost) + append-only event log |
+
+Routing follows the [upgrade review](upgrade.md): **ten profiles, not ten accounts** — keys give
+attribution/revocation, not extra quota; free-only by default; quota exhaustion **pauses** (never
+rotates credentials); auth failures stop, they don't retry. Start with 2 active workers.
+
+```bash
+engine-ai runtime plan --graph tasks.json    # validate a task dependency graph
+engine-ai runtime run --config config.example.yaml --graph tasks.json
+engine-ai runtime status                     # task states + usage totals
+engine-ai runtime verify --path . -- pytest -q
+```
 
 ---
 
@@ -474,12 +510,17 @@ vercel login        # Vercel
 
 ## 🧪 Verified
 
-Pure-stdlib test suite (`python3 -m unittest discover -s tests`): **46 tests** — MCP protocol (27
-tools), scaffolding (node/python/static), RAG index+search, secrets vault, mobile-responsive audit,
-GitHub/Vercel auth guards, **memory pockets** (keyword recall + merge-on-similar + evolving context),
-**app sessions** (git worktree per app · 2-line summaries · resume-with-memory · `app_find`),
-**knowledge store** (FTS5 ingest · domain-filtered BM25 search · translation skip · `context_pack`),
-and the installer (idempotent · preserves settings · clean uninstall · fails cleanly with no Claude Code).
+Pure-stdlib test suite (`python3 -m unittest discover -s tests`): **165 tests** — MCP protocol
+(33 tools incl. **failure paths**: parse errors, invalid params, operational-vs-protocol errors),
+scaffolding (node/python/static · overwrite refusal · dry-run · backups), incremental RAG with line
+spans, AES-256-GCM vault, mobile-responsive audit, GitHub/Vercel auth guards, **memory pockets**
+(project scoping · immutable records · explicit supersede · bounded previews), **app sessions**
+(git worktree per app · drift detection · `app_find`), **knowledge store** (FTS5 · budgeted
+`context_pack` · source freshness), **deploy evidence** (script parsing · real test detection ·
+executed checks), the installer (idempotent · preserves malformed settings · clean uninstall), and
+the **engine_core runtime** (providers/limiter/catalog · graph/leases/fencing/worker · worktrees/
+integrator · policy/journal · verifier/evidence — see `tests/providers/`, `tests/runtime/`,
+`tests/workspaces/`). README counts are guarded by tests (`tests/test_readme.py`) so they can't drift.
 
 ---
 
@@ -487,7 +528,9 @@ and the installer (idempotent · preserves settings · clean uninstall · fails 
 
 ```bash
 engine-ai connect            # (re)connect to Claude Code
-engine-ai doctor             # prerequisites + status
+engine-ai doctor             # prerequisites + status (vault backend, standalone mode)
+engine-ai mcp                # run the MCP server standalone on stdio (any MCP client)
+engine-ai runtime <cmd>      # engine_core runtime: plan | run | status | verify
 engine-ai knowledge sync     # clone + ingest the curated engineering repos
 engine-ai knowledge status   # ingested domains + chunk counts
 engine-ai knowledge agents   # regenerate the 30 domain-expert subagents

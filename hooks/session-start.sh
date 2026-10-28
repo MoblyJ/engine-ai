@@ -6,12 +6,18 @@ set -euo pipefail
 
 read -r -d '' CTX <<'EOF' || true
 engine-ai is ACTIVE. MCP server "engine-ai" tools:
-  build/ship: scaffold_app, deploy_readiness, responsive_audit, git_publish, vercel_deploy
-  repo/skills: index_repo, search_repo, list_skills, get_skill, import_repo_skills
-  secrets: set_secret, list_secrets
-  memory: memory_save, memory_recall, memory_context (keyword-tagged EVOLVING context)
+  build/ship: scaffold_app (refuses overwrite; dry_run), deploy_readiness (inventory+evidence),
+    deploy_verify (EXECUTES the project's own tests, evidence bound to the commit),
+    responsive_audit, git_publish (idempotent, worktree-aware), vercel_deploy
+  repo/skills: index_repo (incremental), search_repo (line spans), list_skills, get_skill,
+    import_repo_skills
+  secrets: set_secret, list_secrets (AES-256-GCM vault)
+  memory: memory_save (project-scoped, immutable, kind=fact/decision/idea/error, supersedes=),
+    memory_recall/memory_context (one project, bounded previews), memory_get (full text + chain),
+    memory_list, memory_forget
   app sessions (git worktrees): app_create, app_update, app_list, app_resume, app_find
-  knowledge swarm: knowledge_ingest, knowledge_search, knowledge_domains, context_pack
+  knowledge swarm: knowledge_ingest (refresh=), knowledge_search, knowledge_domains, context_pack
+    (BUDGETED — default ~6k tokens)
   web search: web_search, web_search_status (live, current info — Brave if keyed, else DuckDuckGo)
   stackoverflow: so_search, so_debug (real-world Q&A; so_debug takes an error/traceback, auto-detects
     language, returns the top matching questions + accepted/top answers, cited)
@@ -25,17 +31,18 @@ machine-learning, llm, security…) — every domain expert also has web_search 
 time-sensitive. engine-researcher also designs OOP class architecture (Mermaid diagrams,
 precedent-grounded via web_search+so_search) before non-trivial builds; engine-debugger fixes real
 errors via so_debug, grounded in cited StackOverflow answers, and verifies the fix actually passes.
-RULE — grounding/research agents run FIRST, always, before writing, planning, or executing any
-code: recall memory (memory_context/memory_recall), ground in the real repo (index_repo/
-search_repo or engine-grounder), and research anything time-sensitive (web_search or
-engine-researcher) BEFORE the first line of a plan or a diff. Never start implementation before
-that context is assembled. For non-trivial new modules, design the OOP class structure (diagram)
-before writing code — no duplicate logic, single responsibility per class, small composable pieces.
-FLOW: for any build/answer, first call context_pack(keywords) to assemble prior MEMORY + retrieved
-DOMAIN KNOWLEDGE (call web_search too if part of the task is time-sensitive), then act, then
-memory_save. Hit a real error? so_debug(error_text) before guessing at a fix. Building an app?
-Follow the deployable-app skill and finish only when tests pass, deploy_readiness=100, and the
-container answers /healthz.
+RULES —
+1. Ground before acting: recall memory (memory_context/memory_recall — project-scoped), ground in
+   the real repo (index_repo/search_repo or engine-grounder), research only what is time-sensitive
+   (web_search/engine-researcher). Match the altitude: a small change needs memory + grounding, NOT
+   three experts or a class diagram; summon experts (suggest_experts, max ~3) only for non-trivial
+   work that matched their domain.
+2. Memory hygiene: save kind=decision for choices, kind=fact for verified outcomes, kind=error for
+   pitfalls; supersede outdated pockets explicitly (supersedes=old_id) — never save a contradictory
+   twin. A model claim is not verified evidence.
+3. Verify with evidence, not scores: deploy_readiness is inventory; call deploy_verify and require
+   the project's own test command to exit 0 at the current commit before calling something done.
+4. Hit a real error? so_debug(error_text) before guessing at a fix.
 EOF
 
 if command -v jq >/dev/null 2>&1; then

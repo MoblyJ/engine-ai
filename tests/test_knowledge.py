@@ -50,9 +50,28 @@ class TestKnowledge(unittest.TestCase):
 
     def test_context_pack_includes_knowledge(self):
         self.k.ingest_path(self.repo, "system-design", "demo")
-        ctx = self.k.context_pack(["scaling", "load-balancer"])
-        self.assertIn("Domain knowledge", ctx)
-        self.assertIn("demo", ctx)
+        pack = self.k.context_pack(["scaling", "load-balancer"])
+        self.assertIn("Domain knowledge", pack["context"])
+        self.assertIn("demo", pack["context"])
+        self.assertGreater(pack["tokens"], 0)
+
+    def test_context_pack_respects_budget(self):
+        from memory import Memory
+        Memory().save(["scaling", "load-balancer"], "M" * 5000, {})  # a big prior pocket
+        self.k.ingest_path(self.repo, "system-design", "demo")
+        big = self.k.context_pack(["scaling", "load-balancer"], budget_tokens=100000)
+        tiny = self.k.context_pack(["scaling", "load-balancer"], budget_tokens=300)
+        self.assertLess(tiny["tokens"], big["tokens"], "a smaller budget must produce a smaller pack")
+        self.assertTrue(tiny["memory_included"])
+        self.assertIn("truncated to fit the budget", tiny["context"])
+        self.assertGreater(big["knowledge_hits"], 0)
+
+    def test_sources_record_freshness_and_commit(self):
+        # a plain dir has no commit — freshness fields exist but commit is None
+        self.k.ingest_path(self.repo, "system-design", "demo")
+        src = self.k.sources()[0]
+        self.assertIn("age_days", src)
+        self.assertIn("freshness", src)
 
     def test_search_empty_query_safe(self):
         self.k.ingest_path(self.repo, "system-design", "demo")

@@ -2,7 +2,14 @@
 
 Each `/new-app` gets a real git worktree (hard isolation: own branch + own working dir) plus a
 session record. `/resume-app` lists sessions with a 2-line summary and reopens one — restoring its
-folder path and its evolving memory context.
+folder path and its project-scoped memory context.
+
+v0.16 (per the upgrade review):
+- The branch recorded is the ACTUAL branch git created (validated with rev-parse), never
+  the branch we asked for — the old fallback could record a name that doesn't exist.
+- Path containment uses realpath + commonpath (no `startswith` prefix tricks).
+- The session records the base SHA it branched from, and drift (branch/folder changed
+  since) is reported explicitly on resume instead of silently trusted.
 
 Central bookkeeping repo: ~/.engine-ai/workspace (worktrees branch from it).
 Default app location:      ~/.engine-ai/apps/<slug>   (override with an explicit path).
@@ -30,7 +37,7 @@ CREATE TABLE IF NOT EXISTS sessions(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   slug TEXT UNIQUE, name TEXT, path TEXT, branch TEXT, mode TEXT DEFAULT 'worktree',
   keywords TEXT NOT NULL DEFAULT '[]', summary TEXT DEFAULT '',
-  created_at REAL, last_opened REAL);
+  base_sha TEXT, created_at REAL, last_opened REAL);
 """
 
 
@@ -54,6 +61,16 @@ def _rel_time(ts: float | None) -> str:
     return "just now"
 
 
+def _head_sha(cwd: str) -> str | None:
+    code, out, _ = _run(["git", "rev-parse", "HEAD"], cwd=cwd)
+    return out if code == 0 else None
+
+
+def _actual_branch(cwd: str) -> str | None:
+    code, out, _ = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=cwd)
+    return out if code == 0 else None
+
+
 def _ensure_workspace() -> bool:
     """Create the central git repo (with one commit so worktrees can branch). Returns git-available."""
     if not shutil.which("git"):
@@ -70,12 +87,28 @@ def _ensure_workspace() -> bool:
     return True
 
 
+def _contains(parent: str, child: str) -> bool:
+    """True if `child` is inside `parent` — realpath + commonpath, separator-safe."""
+    try:
+        return os.path.commonpath([os.path.realpath(parent), os.path.realpath(child)]) == \
+            os.path.realpath(parent)
+    except ValueError:  # different drives / mixing absolute and relative
+        return False
+
+
 class Sessions:
     def __init__(self, db_path: str | None = None):
         os.makedirs(HOME, exist_ok=True)
         self.db = sqlite3.connect(db_path or os.path.join(HOME, "sessions.db"), check_same_thread=False)
         self.db.row_factory = sqlite3.Row
-        self.db.executescript(SCHEMA); self.db.commit()
+        self.db.executescript(SCHEMA)
+        self._migrate()
+        self.db.commit()
+
+    def _migrate(self):
+        cols = {r[1] for r in self.db.execute("PRAGMA table_info(sessions)")}
+        if cols and "base_sha" not in cols:
+            self.db.execute("ALTER TABLE sessions ADD COLUMN base_sha TEXT")
 
     def _unique_slug(self, base: str) -> str:
         slug, i = base, 2
@@ -91,22 +124,40 @@ class Sessions:
         os.makedirs(os.path.dirname(abs_path), exist_ok=True)
         branch = f"app/{slug}"
         mode = "worktree"
+        warnings: list[str] = []
+        base_sha = None
         if _ensure_workspace():
+            base_sha = _head_sha(WORKSPACE)
             code, _, err = _run(["git", "worktree", "add", abs_path, "-b", branch], cwd=WORKSPACE)
             if code != 0:  # fall back to a standalone git repo
                 mode = "gitrepo"
                 os.makedirs(abs_path, exist_ok=True)
-                _run(["git", "init", "-b", branch.replace("app/", "")], cwd=abs_path)
+                short_branch = branch.replace("app/", "")
+                _run(["git", "init", "-b", short_branch], cwd=abs_path)
+            # record the branch git ACTUALLY created — never trust the requested name
+            actual = _actual_branch(abs_path)
+            if actual:
+                if actual != branch:
+                    warnings.append(f"git created branch {actual!r} instead of {branch!r}")
+                    branch = actual
+            else:
+                warnings.append("could not validate the branch (not a git repo?)")
         else:  # no git at all
             mode = "plain"; os.makedirs(abs_path, exist_ok=True)
+            warnings.append("git not available — plain folder, NO isolation")
         kw = keywords or [slug, *_slug(name).split("-")]
         now = time.time()
         cur = self.db.execute(
-            "INSERT INTO sessions(slug,name,path,branch,mode,keywords,created_at,last_opened) VALUES(?,?,?,?,?,?,?,?)",
-            (slug, name, abs_path, branch, mode, json.dumps(list(dict.fromkeys(kw))), now, now))
+            "INSERT INTO sessions(slug,name,path,branch,mode,keywords,summary,base_sha,created_at,last_opened) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (slug, name, abs_path, branch, mode, json.dumps(list(dict.fromkeys(kw))), "",
+             base_sha, now, now))
         self.db.commit()
-        return {"ok": True, "id": cur.lastrowid, "slug": slug, "path": abs_path,
-                "branch": branch, "mode": mode, "keywords": kw}
+        out = {"ok": True, "id": cur.lastrowid, "slug": slug, "path": abs_path,
+               "branch": branch, "mode": mode, "keywords": kw, "base_sha": base_sha}
+        if warnings:
+            out["warnings"] = warnings
+        return out
 
     def update(self, session_id: int, summary: str | None = None, keywords=None) -> dict:
         if summary is not None:
@@ -134,9 +185,8 @@ class Sessions:
         target = os.path.abspath(path or ".")
         best = None
         for r in self.db.execute("SELECT * FROM sessions"):
-            p = r["path"]
-            if target == p or target.startswith(p.rstrip("/") + "/"):
-                if best is None or len(p) > len(best["path"]):
+            if _contains(r["path"], target):
+                if best is None or len(r["path"]) > len(best["path"]):
                     best = r
         if not best:
             return {"ok": False, "error": "not inside a known app session", "path": target}
@@ -159,6 +209,16 @@ class Sessions:
             context = Memory().context(kw)
         except Exception:  # noqa: BLE001
             context = ""
-        return {"ok": True, "id": r["id"], "slug": r["slug"], "name": r["name"], "path": r["path"],
-                "branch": r["branch"], "mode": r["mode"], "keywords": kw, "summary": r["summary"],
-                "exists": os.path.isdir(r["path"]), "memory_context": context}
+        out = {"ok": True, "id": r["id"], "slug": r["slug"], "name": r["name"], "path": r["path"],
+               "branch": r["branch"], "mode": r["mode"], "keywords": kw, "summary": r["summary"],
+               "exists": os.path.isdir(r["path"]), "memory_context": context}
+        # explicit drift check: report what actually is on disk, don't trust the record
+        if out["exists"]:
+            actual = _actual_branch(r["path"])
+            if actual is None:
+                out["drift"] = "folder exists but is not a git repo anymore"
+            elif actual != r["branch"]:
+                out["drift"] = f"branch is now {actual!r} (session recorded {r['branch']!r})"
+        else:
+            out["drift"] = "folder missing"
+        return out

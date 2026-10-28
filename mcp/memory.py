@@ -1,13 +1,17 @@
-"""Memory pockets — evolving, keyword-tagged context for building apps from prompts.
+"""Memory pockets — project-scoped, provenance-tagged, revision-tracked context.
 
-Design borrowed from HelixDB (graph + vector memory), reduced to Python + SQLite:
-- A **pocket** = a labeled memory chunk (HelixDB "node/label") with KEYWORDS defining its
-  context, the context TEXT, structured DATA, an embedding, and a lifecycle (created/updated).
-- **Recall** is hybrid: keyword overlap (Jaccard) + embedding cosine (HelixDB's vector+BM25
-  hybrid), ranked by a combined score — the seed score is kept before any "traversal".
-- **Merge lifecycle**: if 2+ pockets share similar keywords, the closest ones are merged so the
-  returned context carries BOTH memory + data — this is what makes apps *evolve* across prompts.
-- **Edges** link related pockets (RELATES_TO / SUPERSEDES) like HelixDB's typed edges.
+Design (v0.16, per the upgrade review):
+- A **pocket** = an immutable record: KEYWORDS defining its context, the context TEXT,
+  structured DATA, a KIND (fact | decision | idea | error | note), the PROJECT it belongs
+  to, optional SOURCE provenance, and a REVISION chain.
+- **Project namespace**: pockets live in a project (default `global`, or
+  $ENGINE_AI_PROJECT). Facts from one project are NEVER recalled for another, and are
+  never merged just because their keywords overlap.
+- **No implicit merges**: `save` always appends a new immutable pocket. Superseding is
+  explicit (`supersedes=<id>`): the new pocket links to the old one and the old one is
+  retired from recall. The full chain stays retrievable via `get()`.
+- **Recall is bounded**: it returns previews (default 600 chars) + data; fetch full text
+  on demand with `get(id)` — compaction/decisions stay separable from evidence.
 
 Stored in ~/.engine-ai/memory.db so it persists across Claude Code sessions.
 """
@@ -24,19 +28,25 @@ from engine import HOME, embed  # reuse the hashing-trick embedder + home dir
 
 _cos = lambda a, b: sum(x * y for x, y in zip(a, b))  # noqa: E731
 
-MERGE_KW = 0.55        # save-time dedup: keyword Jaccard >= this ⇒ merge into existing pocket
-MERGE_KW_VEC = 0.30    # …or keyword>=this AND embedding cosine>=MERGE_VEC
-MERGE_VEC = 0.82
-SIM_KW = 0.20          # recall-time: two hits this similar (share a core keyword) ⇒ combine memory+data
+SIM_KW = 0.20          # two pockets this keyword-similar get a RELATES_TO edge
+PREVIEW_CHARS = 600    # recall sends previews; full text comes via get(id)
+KINDS = ("fact", "decision", "idea", "error", "note")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS pockets(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project TEXT NOT NULL DEFAULT 'global',
   keywords TEXT NOT NULL, text TEXT NOT NULL, data TEXT NOT NULL DEFAULT '{}',
-  category TEXT, vec TEXT NOT NULL, created_at REAL, updated_at REAL, hits INTEGER DEFAULT 0);
+  category TEXT, kind TEXT NOT NULL DEFAULT 'note', source TEXT,
+  revision INTEGER NOT NULL DEFAULT 1, supersedes INTEGER, superseded_by INTEGER,
+  vec TEXT NOT NULL, created_at REAL, updated_at REAL, hits INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS pocket_edges(
   src INTEGER, dst INTEGER, label TEXT, weight REAL DEFAULT 1.0, created_at REAL);
 """
+
+
+def default_project() -> str:
+    return os.environ.get("ENGINE_AI_PROJECT") or "global"
 
 
 def _norm(keywords) -> list[str]:
@@ -62,55 +72,87 @@ class Memory:
         os.makedirs(HOME, exist_ok=True)
         self.db = sqlite3.connect(db_path or os.path.join(HOME, "memory.db"), check_same_thread=False)
         self.db.row_factory = sqlite3.Row
-        self.db.executescript(SCHEMA); self.db.commit()
+        self._migrate()
+        self.db.commit()
+
+    def _migrate(self):
+        """Upgrade pre-v0.16 databases in place: add the namespace/provenance columns."""
+        cols = {r[1] for r in self.db.execute("PRAGMA table_info(pockets)")}
+        if not cols:
+            self.db.executescript(SCHEMA)
+            return
+        for col, decl in (("project", "TEXT NOT NULL DEFAULT 'global'"),
+                          ("kind", "TEXT NOT NULL DEFAULT 'note'"),
+                          ("source", "TEXT"),
+                          ("revision", "INTEGER NOT NULL DEFAULT 1"),
+                          ("supersedes", "INTEGER"),
+                          ("superseded_by", "INTEGER")):
+            if col not in cols:
+                self.db.execute(f"ALTER TABLE pockets ADD COLUMN {col} {decl}")
 
     # ---------------------------------------------------------------- save
-    def save(self, keywords, text: str, data: dict | None = None, category: str | None = None) -> dict:
+    def save(self, keywords, text: str, data: dict | None = None, category: str | None = None,
+             *, project: str | None = None, kind: str = "note", source: str | None = None,
+             supersedes: int | None = None) -> dict:
         kw = _norm(keywords)
         if not kw or not (text or "").strip():
             return {"ok": False, "error": "keywords and text are required"}
+        if kind not in KINDS:
+            return {"ok": False, "error": f"kind must be one of {KINDS}"}
+        project = (project or default_project()).strip() or "global"
         data = data or {}
+
+        revision = 1
+        if supersedes is not None:
+            old = self.db.execute("SELECT id,project,revision FROM pockets WHERE id=?", (supersedes,)).fetchone()
+            if not old:
+                return {"ok": False, "error": f"supersedes: no pocket #{supersedes}"}
+            if old["project"] != project:
+                return {"ok": False, "error": "supersedes: pocket belongs to a different project"}
+            revision = old["revision"] + 1
+
+        # idempotence: the exact same record already exists → return it, don't duplicate
+        for row in self.db.execute(
+                "SELECT id,keywords,data,kind,source,superseded_by FROM pockets WHERE project=? AND text=?",
+                (project, text.strip())):
+            if (json.loads(row["keywords"]) == kw and json.loads(row["data"]) == data
+                    and row["kind"] == kind and row["source"] == source and row["superseded_by"] is None):
+                return {"ok": True, "id": row["id"], "merged": False, "duplicate": True,
+                        "keywords": kw, "project": project, "kind": kind, "revision": 1}
+
         vec = embed(" ".join(kw) + " " + text)
-        # dedup/merge into the closest existing pocket if very similar
-        best, best_j, best_c = None, 0.0, 0.0
-        for r in self.db.execute("SELECT * FROM pockets"):
-            j = _jaccard(kw, json.loads(r["keywords"]))
-            c = _cos(vec, json.loads(r["vec"]))
-            if j > best_j or (j == best_j and c > best_c):
-                best, best_j, best_c = r, j, c
-        if best and (best_j >= MERGE_KW or (best_j >= MERGE_KW_VEC and best_c >= MERGE_VEC)):
-            merged_kw = _norm(json.loads(best["keywords"]) + kw)
-            merged_text = (best["text"] + "\n---\n" + text).strip()[-8000:]
-            merged_data = {**json.loads(best["data"]), **data}
-            self.db.execute(
-                "UPDATE pockets SET keywords=?, text=?, data=?, vec=?, updated_at=?, hits=hits+1 WHERE id=?",
-                (json.dumps(merged_kw), merged_text, json.dumps(merged_data),
-                 json.dumps(embed(" ".join(merged_kw) + " " + merged_text)), time.time(), best["id"]))
-            self.db.commit()
-            return {"ok": True, "id": best["id"], "merged": True, "keywords": merged_kw,
-                    "note": "evolved an existing pocket (similar keywords)"}
+        now = time.time()
         cur = self.db.execute(
-            "INSERT INTO pockets(keywords,text,data,category,vec,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",
-            (json.dumps(kw), text, json.dumps(data), category, json.dumps(vec), time.time(), time.time()))
-        self.db.commit()
-        # link to related pockets (RELATES_TO) for graph traversal later
+            "INSERT INTO pockets(project,keywords,text,data,category,kind,source,revision,supersedes,"
+            "vec,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            (project, json.dumps(kw), text.strip(), json.dumps(data), category, kind, source,
+             revision, supersedes, json.dumps(vec), now, now))
         pid = cur.lastrowid
-        for r in self.db.execute("SELECT id,keywords FROM pockets WHERE id!=?", (pid,)):
+        if supersedes is not None:
+            self.db.execute("UPDATE pockets SET superseded_by=?, updated_at=? WHERE id=?",
+                            (pid, now, supersedes))
+        # link to related pockets in the SAME project (RELATES_TO) for graph traversal
+        for r in self.db.execute("SELECT id,keywords FROM pockets WHERE project=? AND id!=? AND superseded_by IS NULL",
+                                 (project, pid)):
             j = _jaccard(kw, json.loads(r["keywords"]))
             if j >= SIM_KW:
                 self.db.execute("INSERT INTO pocket_edges(src,dst,label,weight,created_at) VALUES(?,?,?,?,?)",
-                                (pid, r["id"], "RELATES_TO", j, time.time()))
+                                (pid, r["id"], "RELATES_TO", j, now))
         self.db.commit()
-        return {"ok": True, "id": pid, "merged": False, "keywords": kw}
+        return {"ok": True, "id": pid, "merged": False, "duplicate": False, "keywords": kw,
+                "project": project, "kind": kind, "revision": revision}
 
     # ---------------------------------------------------------------- recall
-    def recall(self, keywords, k: int = 3) -> dict:
+    def recall(self, keywords, k: int = 3, *, project: str | None = None,
+               preview_chars: int = PREVIEW_CHARS, include_superseded: bool = False) -> dict:
         kw = _norm(keywords)
+        project = (project or default_project()).strip() or "global"
         qv = embed(" ".join(kw))
         scored = []
-        for r in self.db.execute("SELECT * FROM pockets"):
-            pk = json.loads(r["keywords"])
-            j = _jaccard(kw, pk)
+        for r in self.db.execute("SELECT * FROM pockets WHERE project=?", (project,)):
+            if r["superseded_by"] is not None and not include_superseded:
+                continue  # retired by an explicit supersede — newest revision wins
+            j = _jaccard(kw, json.loads(r["keywords"]))
             c = _cos(qv, json.loads(r["vec"]))
             score = 0.6 * j + 0.4 * c
             if score > 0.02:
@@ -118,46 +160,90 @@ class Memory:
         scored.sort(key=lambda x: x[0], reverse=True)
         top = scored[:k]
         if not top:
-            return {"pockets": [], "used": "none", "context": ""}
-        # bump hit counts
+            return {"pockets": [], "used": "none", "context": "", "project": project}
         for _, _, r in top:
             self.db.execute("UPDATE pockets SET hits=hits+1 WHERE id=?", (r["id"],))
         self.db.commit()
-        pockets = [{"id": r["id"], "score": round(s, 3), "keywords": json.loads(r["keywords"]),
-                    "category": r["category"], "text": r["text"], "data": json.loads(r["data"])}
-                   for s, _, r in top]
-        # if the top two share keywords → combine BOTH memory + data (evolving context)
+        pockets = []
+        for s, j, r in top:
+            text = r["text"]
+            pockets.append({"id": r["id"], "score": round(s, 3), "keywords": json.loads(r["keywords"]),
+                            "category": r["category"], "kind": r["kind"], "revision": r["revision"],
+                            "project": r["project"], "source": r["source"],
+                            "supersedes": r["supersedes"], "superseded_by": r["superseded_by"],
+                            "preview": text[:preview_chars] + ("…" if len(text) > preview_chars else ""),
+                            "truncated": len(text) > preview_chars, "data": json.loads(r["data"])})
         used = "single"
-        if len(top) >= 2 and _jaccard(json.loads(top[0][2]["keywords"]), json.loads(top[1][2]["keywords"])) >= SIM_KW:
+        if len(top) >= 2 and _jaccard(json.loads(top[0][2]["keywords"]),
+                                      json.loads(top[1][2]["keywords"])) >= SIM_KW:
             used = "merged-closest"
         ctx = self._format(pockets, kw, used)
-        return {"pockets": pockets, "used": used, "context": ctx}
+        return {"pockets": pockets, "used": used, "context": ctx, "project": project}
 
-    def context(self, keywords, k: int = 3) -> str:
-        return self.recall(keywords, k=k)["context"]
+    def context(self, keywords, k: int = 3, *, project: str | None = None) -> str:
+        return self.recall(keywords, k=k, project=project)["context"]
 
     def _format(self, pockets: list[dict], kw: list[str], used: str) -> str:
         if not pockets:
             return ""
-        lines = [f"# Evolving memory for [{', '.join(kw)}]  (recall: {used})",
-                 "Build on this prior context so the app EVOLVES from earlier prompts — do not start over.\n"]
+        lines = [f"# Memory for [{', '.join(kw)}]  · project: {pockets[0]['project']}  (recall: {used})",
+                 "Verified prior context — build on it, and supersede outdated pockets explicitly.\n"]
         for p in pockets:
-            lines.append(f"## pocket #{p['id']}  · keywords: {', '.join(p['keywords'])}  · score {p['score']}")
-            lines.append(p["text"].strip())
+            head = (f"## pocket #{p['id']}  · {p['kind']}  · rev {p['revision']}  · "
+                    f"keywords: {', '.join(p['keywords'])}  · score {p['score']}")
+            lines.append(head)
+            lines.append(p["preview"])
             if p["data"]:
                 lines.append("data: " + json.dumps(p["data"]))
+            if p["truncated"]:
+                lines.append(f"(truncated — memory_get({p['id']}) returns the full text)")
             lines.append("")
         return "\n".join(lines)
 
+    # ---------------------------------------------------------------- fetch full record
+    def get(self, pocket_id: int) -> dict:
+        r = self.db.execute("SELECT * FROM pockets WHERE id=?", (pocket_id,)).fetchone()
+        if not r:
+            return {"ok": False, "error": f"no pocket #{pocket_id}"}
+        chain = []
+        cur = r
+        while cur["supersedes"]:
+            prev = self.db.execute(
+                "SELECT id,kind,revision,supersedes,superseded_by,created_at,text FROM pockets WHERE id=?",
+                (cur["supersedes"],)).fetchone()
+            if not prev:
+                break
+            chain.append({"id": prev["id"], "kind": prev["kind"], "revision": prev["revision"],
+                          "superseded_at": prev["superseded_by"] and cur["id"], "created_at": prev["created_at"],
+                          "text": prev["text"]})
+            cur = prev
+        superseded_by = None
+        if r["superseded_by"]:
+            nr = self.db.execute("SELECT id,kind,revision FROM pockets WHERE id=?", (r["superseded_by"],)).fetchone()
+            superseded_by = dict(nr) if nr else None
+        related = [{"id": e["dst"], "label": e["label"], "weight": round(e["weight"], 3)}
+                   for e in self.db.execute("SELECT dst,label,weight FROM pocket_edges WHERE src=?", (pocket_id,))]
+        return {"ok": True, "id": r["id"], "project": r["project"], "keywords": json.loads(r["keywords"]),
+                "kind": r["kind"], "revision": r["revision"], "source": r["source"],
+                "category": r["category"], "text": r["text"], "data": json.loads(r["data"]),
+                "supersedes_chain": chain, "superseded_by": superseded_by, "related": related,
+                "created_at": r["created_at"], "updated_at": r["updated_at"], "hits": r["hits"]}
+
     # ---------------------------------------------------------------- misc
-    def list(self) -> list[dict]:
+    def list(self, project: str | None = None) -> list[dict]:
+        project = (project or default_project()).strip() or "global"
         return [{"id": r["id"], "keywords": json.loads(r["keywords"]), "category": r["category"],
+                 "kind": r["kind"], "project": r["project"], "revision": r["revision"],
+                 "retired": r["superseded_by"] is not None,
                  "hits": r["hits"], "updated_at": r["updated_at"],
                  "preview": r["text"][:80].replace("\n", " ")}
-                for r in self.db.execute("SELECT * FROM pockets ORDER BY updated_at DESC")]
+                for r in self.db.execute("SELECT * FROM pockets WHERE project=? ORDER BY updated_at DESC",
+                                         (project,))]
 
     def forget(self, pocket_id: int) -> dict:
         self.db.execute("DELETE FROM pockets WHERE id=?", (pocket_id,))
         self.db.execute("DELETE FROM pocket_edges WHERE src=? OR dst=?", (pocket_id, pocket_id))
+        self.db.execute("UPDATE pockets SET superseded_by=NULL WHERE superseded_by=?", (pocket_id,))
+        self.db.execute("UPDATE pockets SET supersedes=NULL WHERE supersedes=?", (pocket_id,))
         self.db.commit()
         return {"ok": True, "deleted": pocket_id}
