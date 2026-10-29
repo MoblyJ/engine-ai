@@ -1,6 +1,6 @@
 {
   "name": "@okoboji/engine-ai",
-  "version": "0.17.5",
+  "version": "0.17.6",
   "description": "Supercharge Claude Code in your terminal — build, mobile-check, and ship deployable apps to GitHub + Vercel. One command install, auto-connects. Now with engine_core: a provider-independent coding runtime (task graphs, leases, worktrees, evidence-based verification).",
   "bin": {
     "engine-ai": "bin/engine-ai.js"

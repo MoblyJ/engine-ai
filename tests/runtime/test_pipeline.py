@@ -121,6 +121,32 @@ class TestPipeline(unittest.TestCase):
         self.assertTrue(any(e["task"] == "tests" and not e["passed"]
                             for e in out["evidence"]))
 
+    def test_failed_task_blocks_its_dependents(self):
+        """A dependency that fails verification must not run its dependents —
+        they would burn quota building on a broken base."""
+        import engine_core.verification.runner as VR
+
+        plan = json.dumps({"tasks": [
+            {"id": "base", "title": "base", "profile": "backend",
+             "objective": "write base", "verification": ["python3 -c 'exit(1)'"]},
+            {"id": "dependent", "title": "dependent", "profile": "backend",
+             "dependencies": ["base"], "objective": "build on base"},
+        ]})
+
+        class HalfFailing(VR.Verifier):
+            def run_checks(self, workspace, commands, commit=None):
+                return {"commit": commit, "workspace": workspace, "passed": False,
+                        "checks": [{"name": "x", "command": [], "exit_code": 1,
+                                    "duration_s": 0, "output_tail": "boom"}]}
+
+        pipe, providers = _pipeline(self.home, plan, worker_texts=[DONE, DONE],
+                                    verifier=HalfFailing())
+        out = pipe.run("build something")
+        ran = {r["task"] for r in out["results"]}
+        self.assertIn("base", ran)
+        self.assertNotIn("dependent", ran, "dependent must not run on a failed base")
+        self.assertEqual(out["complete"], 0)
+
     def test_missing_key_blocks_cleanly(self):
         pipe = BuildPipeline(self.home, Config())  # no keys at all
         with self.assertRaises(PipelineError) as cm:

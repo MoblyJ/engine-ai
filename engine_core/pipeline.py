@@ -188,6 +188,12 @@ class BuildPipeline:
                                      "checks": run["checks"], "manifest": manifest.manifest_hash()})
                     if not run["passed"]:
                         outcome["status"] = "verification-failed"
+                if outcome.get("status") != "done":
+                    # the worker already marked it complete in the store — demote
+                    # it so DEPENDENTS don't run (and burn quota) on a failed base
+                    blocked = str(outcome.get("status", "")).startswith("provider-")
+                    store.demote(tid, "blocked" if blocked else "failed",
+                                 error=str(outcome.get("error") or outcome.get("status")))
                 results.append(outcome)
                 executed.add(tid)
         return {"results": results, "evidence": evidence,

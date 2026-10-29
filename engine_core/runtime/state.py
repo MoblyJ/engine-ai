@@ -176,6 +176,14 @@ class StateStore:
         for tid in task_ids:
             self._set(tid, "ready")
 
+    def demote(self, task_id: str, state: str, error: str) -> None:
+        """Move a completed-looking task back to failed/blocked — used when
+        post-hoc verification fails: dependents gate on `complete`, so demoting
+        stops them from running (and burning quota) on a broken base."""
+        if state not in STATES:
+            raise StateError(f"invalid state {state!r}")
+        self._set(task_id, state, error=error)
+
     # ---------------------------------------------------------------- events
     def events(self, task_id: str | None = None, limit: int = 100) -> list[dict]:
         if task_id:
