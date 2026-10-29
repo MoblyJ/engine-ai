@@ -68,6 +68,49 @@ class TestCredentialResolution(unittest.TestCase):
         self.assertIsNone(p.resolve_credential(), "no vault → treated as unset")
         self.assertIsNone(p.resolve_credential(_FakeVault().get), "vault miss → unset")
 
+    def test_vault_errors_are_loud_not_missing(self):
+        """A locked/corrupt vault must raise, not masquerade as 'no key configured'."""
+        def broken_getter(name, scope="global"):
+            raise RuntimeError("database is locked")
+        p = default_profiles()["backend"]
+        p.credential_ref = "vault:X"
+        with self.assertRaises(RuntimeError):
+            p.resolve_credential(broken_getter)
+
+    def test_real_vault_reads_are_concurrency_safe(self):
+        """10 worker threads resolving keys simultaneously must all succeed —
+        regression for the SQLite 'database is locked' race that misreported
+        two healthy agents as NO KEY during a concurrent probe."""
+        import threading
+        old_home = os.environ.get("ENGINE_AI_HOME")
+        old_key = os.environ.get("ENGINE_AI_MASTER_KEY")
+        os.environ["ENGINE_AI_HOME"] = tempfile.mkdtemp()
+        os.environ["ENGINE_AI_MASTER_KEY"] = "race-test"
+        try:
+            from engine_core._compat import mcp_module
+            eng = mcp_module("engine").Engine()
+            for i in range(10):
+                eng.set_secret(f"K{i}", f"sk-val-{i}")
+            results = [None] * 10
+            barrier = threading.Barrier(10)
+
+            def grab(i):
+                barrier.wait()  # maximize contention
+                results[i] = eng.get_secret(f"K{i}")
+
+            ts = [threading.Thread(target=grab, args=(i,)) for i in range(10)]
+            [t.start() for t in ts]
+            [t.join() for t in ts]
+            self.assertEqual(results, [f"sk-val-{i}" for i in range(10)],
+                             "every concurrent vault read must succeed")
+        finally:
+            for var, old in (("ENGINE_AI_HOME", old_home),
+                             ("ENGINE_AI_MASTER_KEY", old_key)):
+                if old is None:
+                    os.environ.pop(var, None)
+                else:
+                    os.environ[var] = old
+
     def test_env_slicing_has_no_off_by_one(self):
         os.environ["K"] = "v"
         try:

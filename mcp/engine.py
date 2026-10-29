@@ -18,6 +18,7 @@ import os
 import re
 import secrets
 import sqlite3
+import threading
 import time
 
 HOME = os.path.expanduser(os.environ.get("ENGINE_AI_HOME", "~/.engine-ai"))
@@ -145,20 +146,37 @@ def parse_frontmatter(text: str):
 class Engine:
     def __init__(self, db_path: str | None = None):
         os.makedirs(HOME, exist_ok=True)
-        self.db = sqlite3.connect(db_path or os.path.join(HOME, "forge.db"), check_same_thread=False)
-        self.db.row_factory = sqlite3.Row
-        self.db.executescript(SCHEMA)
-        self._migrate()
-        self.db.commit()
+        self._db_path = db_path or os.path.join(HOME, "forge.db")
+        self._local = threading.local()
+        self.db  # establish the creating thread's connection eagerly
 
-    def _migrate(self):
+    @property
+    def db(self) -> sqlite3.Connection:
+        """A per-thread connection: a single sqlite3.Connection shared across
+        threads raises InterfaceError even with check_same_thread=False (rows
+        cross threads mid-iteration) — worker threads resolving vault keys
+        concurrently each get their own connection instead."""
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(self._db_path, check_same_thread=False, timeout=15)
+            conn.execute("PRAGMA journal_mode=WAL")   # concurrent readers must not
+            conn.execute("PRAGMA busy_timeout=5000")  # hit "database is locked"
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.row_factory = sqlite3.Row
+            conn.executescript(SCHEMA)
+            self._migrate(conn)
+            conn.commit()
+            self._local.conn = conn
+        return conn
+
+    def _migrate(self, conn):
         """Drop pre-v0.16 rag tables that lack the span columns (the index is a
         disposable cache — it is rebuilt incrementally on the next index_repo)."""
-        cols = {r[1] for r in self.db.execute("PRAGMA table_info(rag)")}
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(rag)")}
         if cols and "start_line" not in cols:
-            self.db.execute("DROP TABLE rag")
-            self.db.execute("CREATE TABLE rag(repo TEXT, path TEXT, chunk INTEGER, "
-                            "start_line INTEGER, end_line INTEGER, text TEXT, vec TEXT)")
+            conn.execute("DROP TABLE rag")
+            conn.execute("CREATE TABLE rag(repo TEXT, path TEXT, chunk INTEGER, "
+                         "start_line INTEGER, end_line INTEGER, text TEXT, vec TEXT)")
 
     # ---- skills ----
     def register_skill(self, name, description, body, *, fmt="native", source="bundled", version="1.0.0"):

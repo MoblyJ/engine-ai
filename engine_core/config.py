@@ -144,10 +144,10 @@ class Profile:
         if ref.startswith("vault:"):
             if vault_getter is None:
                 return None
-            try:
-                return vault_getter(ref[len("vault:"):])
-            except Exception:  # noqa: BLE001 - vault miss/locked → treated as unset
-                return None
+            # a MISSING name legitimately returns None; an ERROR (locked/corrupt
+            # vault) must be loud — silently returning None here once sent two
+            # healthy agents down the NO-KEY path during a concurrent probe
+            return vault_getter(ref[len("vault:"):])
         return ref
 
 

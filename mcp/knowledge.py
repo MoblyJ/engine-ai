@@ -78,7 +78,10 @@ class Knowledge:
     def __init__(self, db_path: str | None = None):
         os.makedirs(HOME, exist_ok=True)
         os.makedirs(SOURCES, exist_ok=True)
-        self.db = sqlite3.connect(db_path or os.path.join(HOME, "knowledge.db"), check_same_thread=False)
+        self.db = sqlite3.connect(db_path or os.path.join(HOME, "knowledge.db"),
+                                  check_same_thread=False, timeout=15)
+        self.db.execute("PRAGMA journal_mode=WAL")   # concurrent readers must not
+        self.db.execute("PRAGMA busy_timeout=5000")  # hit "database is locked"
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
         self._migrate()
