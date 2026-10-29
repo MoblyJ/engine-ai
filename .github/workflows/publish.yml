@@ -3,6 +3,7 @@ name: Publish to npm
 on:
   release:
     types: [published]
+  workflow_dispatch: {}   # manual trigger (also used to validate trusted publishing)
 
 jobs:
   deploy:
