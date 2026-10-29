@@ -1,0 +1,31 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # This permissions block is mandatory for OIDC Trusted Publishing
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://npmjs.org'
+
+      - name: Install Dependencies
+        run: if [ -f package-lock.json ]; then npm ci; else echo "no lockfile — package has no dependencies"; fi
+
+      # Trusted Publishing: npm verifies this workflow's OIDC identity — no tokens.
+      # --access public because this is a scoped package (@okoboji/engine-ai)
+      - name: Publish Package
+        run: npm publish --access public
