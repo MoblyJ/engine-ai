@@ -20,7 +20,7 @@ version: 1
 execution:
   max_active_workers: 2
   max_build_processes: 1
-  max_model_turns_per_task: 8
+  max_model_turns_per_task: 12   # free models spend several turns on tool calls (writing files in chunks) before their final outcome
 routing:
   free_only: true
   paid_fallback: false

@@ -6,7 +6,7 @@ The illustrative config from the review is supported verbatim:
     execution:
       max_active_workers: 2
       max_build_processes: 1
-      max_model_turns_per_task: 8
+      max_model_turns_per_task: 12  # free models spend several turns on tool calls before their final outcome
     routing:
       free_only: true
       paid_fallback: false
@@ -156,7 +156,7 @@ class Config:
     version: int = 1
     max_active_workers: int = 2
     max_build_processes: int = 1
-    max_model_turns_per_task: int = 8
+    max_model_turns_per_task: int = 12  # free models spend several turns on tool calls before their final outcome
     free_only: bool = True
     paid_fallback: bool = False
     quota_exhausted: str = "pause"
@@ -174,7 +174,7 @@ class Config:
         cfg = Config(
             max_active_workers=int(ex.get("max_active_workers", 2)),
             max_build_processes=int(ex.get("max_build_processes", 1)),
-            max_model_turns_per_task=int(ex.get("max_model_turns_per_task", 8)),
+            max_model_turns_per_task=int(ex.get("max_model_turns_per_task", 12)),
             free_only=bool(rt.get("free_only", True)),
             paid_fallback=bool(rt.get("paid_fallback", False)),
             quota_exhausted=str(rt.get("quota_exhausted", "pause")),
