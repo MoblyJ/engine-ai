@@ -21,10 +21,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          registry-url: 'https://npmjs.org'
+          registry-url: 'https://registry.npmjs.org/'
 
       - name: Install Dependencies
         run: if [ -f package-lock.json ]; then npm ci; else echo "no lockfile — package has no dependencies"; fi
+
+      # Trusted publishing (OIDC) needs npm >= 11.7 — the runner's bundled npm is older
+      - name: Use latest npm
+        run: npm install -g npm@latest
 
       # Trusted Publishing: npm verifies this workflow's OIDC identity — no tokens.
       # --access public because this is a scoped package (@okoboji/engine-ai)
