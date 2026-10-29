@@ -260,6 +260,27 @@ class TestConfig(unittest.TestCase):
             json.dump({"version": 1, "execution": {"max_active_workers": 3}}, f)
         self.assertEqual(load_config(path).max_active_workers, 3)
 
+    def test_yaml_inline_comments_stripped(self):
+        path = os.path.join(tempfile.mkdtemp(), "c.yaml")
+        with open(path, "w") as f:
+            f.write("version: 1  # comment\n"
+                    "execution:\n"
+                    "  max_model_turns_per_task: 12   # free models need headroom\n"
+                    "routing:\n"
+                    "  free_only: true # trailing too\n"
+                    "profiles:\n"
+                    "  backend:\n"
+                    '    credential_ref: "env:KEEP # HASH"  # quoted hash survives\n')
+        cfg = load_config(path)
+        self.assertEqual(cfg.max_model_turns_per_task, 12)
+        self.assertTrue(cfg.free_only)
+        self.assertEqual(cfg.profile("backend").credential_ref, "env:KEEP # HASH")
+
+    def test_default_turn_budget_is_12(self):
+        # regression: free models spend several turns on tool calls before their
+        # final outcome — the live build recorded turn-budget-exhausted at 8
+        self.assertEqual(Config().max_model_turns_per_task, 12)
+
 
 class TestRuntimeCLI(unittest.TestCase):
     """python3 -m engine_core — clean exit codes and messages, no tracebacks."""

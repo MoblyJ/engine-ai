@@ -40,8 +40,22 @@ class ConfigError(ValueError):
 
 
 # --------------------------------------------------------- tiny YAML-subset parser
+def _strip_inline_comment(s: str) -> str:
+    """Drop a trailing ` # comment` — but never inside quotes (a value like
+    "keep # this" or a hex-ish secret survives intact)."""
+    in_s = in_d = False
+    for i, ch in enumerate(s):
+        if ch == "'" and not in_d:
+            in_s = not in_s
+        elif ch == '"' and not in_s:
+            in_d = not in_d
+        elif ch == "#" and not in_s and not in_d and i > 0 and s[i - 1] in " \t":
+            return s[:i]
+    return s
+
+
 def _parse_scalar(s: str):
-    s = s.strip()
+    s = _strip_inline_comment(s.strip()).strip()
     if s.startswith("[") and s.endswith("]"):  # inline list: [a, b, c]
         inner = s[1:-1].strip()
         return [_parse_scalar(x) for x in inner.split(",")] if inner else []
