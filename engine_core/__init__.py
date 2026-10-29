@@ -14,4 +14,4 @@ The MCP tool names in mcp/forge_mcp.py stay the stable public surface; engine_co
 extracted runtime that will gradually absorb them.
 """
 
-__version__ = "0.17.3"
+__version__ = "0.17.4"
