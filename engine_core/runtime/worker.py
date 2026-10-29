@@ -28,7 +28,11 @@ SYSTEM_PROMPT = (
     "permitted paths. Call tools as needed; when the task's acceptance criteria are met, "
     "reply with a JSON object on its own: "
     '{"status":"done"|"blocked","summary":"...","changed_files":[...],"checks":[...],'
-    '"unresolved":[...]}. Otherwise continue working.'
+    '"unresolved":[...]}. Otherwise continue working. '
+    "NEVER report status done until every required artifact EXISTS ON DISK and your own "
+    "verification commands have actually been run — a verifier will re-execute them and "
+    "a claimed-but-unwritten file fails the task. If you cannot complete an artifact, "
+    'report {"status":"blocked"} with the reason instead of claiming completion.'
 )
 
 
