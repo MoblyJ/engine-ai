@@ -2,8 +2,9 @@
 
 # ◈ Engine-ai
 
-### Turn your terminal **Claude Code** into a deployable-app factory.
+### Turn your terminal **Claude Code** into a deployable-app factory — now with its own **multi-agent runtime**.
 **Build → mobile-check → publish to GitHub → deploy to Vercel — from inside Claude Code.**
+**v0.17: drop a `keys.csv` → 10 agents (each with its own OpenRouter key + model) plan, build, and verify — and a Codex CLI config is generated for you.**
 
 [![npm](https://img.shields.io/badge/install-npm-CB3837?style=flat&logo=npm&logoColor=white)](#-install-one-command)
 [![Claude Code](https://img.shields.io/badge/for-Claude%20Code-6b5cff?style=flat)](https://docs.claude.com/en/docs/claude-code)
@@ -22,6 +23,15 @@
 command installs it and it **auto-connects** — adding slash commands, skills, and an **MCP server** of
 tools your agent can call. You describe an app in plain English; Claude scaffolds it, tests it, checks
 mobile responsiveness, and ships it to **GitHub + Vercel**.
+
+Since **v0.17** it also ships a **provider-independent multi-agent runtime** (`engine_core`): drop a
+`keys.csv` with one `key,model` line per agent and the **planner, frontend, backend, services,
+database, test-author, reviewer, security-review, researcher, and documentation agents** each run
+under their **own OpenRouter API key and model** — the planner decomposes your objective into a
+validated task graph, workers build with real file/shell tools inside an isolated workspace, every
+task is verified by executed commands (evidence manifests, not scores), and a **Codex CLI config**
+(`~/.codex/config.toml`) is generated so `codex --profile engine_backend` runs on the same keys.
+Keys live encrypted in a local vault — they are never committed, echoed, or put in prompts.
 
 > No web dashboard. No cloud account. No heavy dependencies (pure Python stdlib). It lives inside
 > Claude Code and works in **WSL / Linux / macOS**.
@@ -45,7 +55,8 @@ npm install -g @okoboji/engine-ai
 ```
 
 That's it — the installer **auto-detects Claude Code and connects itself**. Then **open a new Claude
-Code session**. If `engine-ai: command not found` afterward, see the PATH note further down.
+Code session**. If `engine-ai: command not found` afterward, see the PATH note further down. Prefer
+to try before installing? `npx @okoboji/engine-ai doctor` works too.
 
 > **Published under `@okoboji/engine-ai`, not `engine-ai`** — the bare name `engine-ai` is already
 > taken on the npm registry by an unrelated package. This is also a real **npm registry** package now
@@ -139,12 +150,20 @@ https://www.npmjs.com/package/@okoboji/engine-ai.
 
 Or just talk to it: *"build a responsive coffee-shop landing page, then ship it live."*
 
+**Outside Claude Code, the agents work on their own** (their keys, their models):
+
+```bash
+echo "sk-or-v1-…,nvidia/nemotron-3.5-super-vl:free"   # one line per agent → ~/.engine-ai/keys.csv
+engine-ai runtime keys                                 # auto-detected, encrypted, permanent
+engine-ai runtime build "a small todo API with tests"  # planner → workers → verifier → evidence
+```
+
 ```mermaid
 flowchart LR
   A["/new-app idea"] --> B[scaffold_app]
   B --> C[implement + tests]
   C --> D[/mobile-check/]
-  D --> E[/deploy-check → 100/]
+  D --> E["/deploy-check + deploy_verify (evidence)"]
   E --> F["/ship-live"]
   F --> G[git_publish → GitHub]
   F --> H[vercel_deploy → live URL]
@@ -231,15 +250,22 @@ an **agent-to-agent (A2A) loop**. Each has its own context and its own tool set 
 | 🌐 **engine-researcher** | Two jobs: (1) live web search for current info the offline knowledge store can't have; (2) precedent-grounded OOP class-diagram design before non-trivial builds. | time-sensitive Qs, `/research`, or pre-build design | `web_search`, `web_search_status`, `so_search`, `memory_context`/`recall`/`save` + Read |
 | 🪲 **engine-debugger** | Fixes a real error/exception by grounding the fix in StackOverflow precedent (cited accepted/top answers), then verifies it. | on a real error, or `/debug` | `so_search`, `so_debug`, `search_repo`, `memory_context`/`recall`/`save` + Read, Edit, Bash |
 
-**The A2A loop** the orchestrator runs (each step's output feeds the next; memory bookends every run):
+**The orchestrator's loop** (v0.17): scope the request first, plan a small dependency graph of
+task packets, gather context **per packet** (conditional experts/research — never the whole swarm),
+escalate to the debugger only on real error evidence, verify with executed commands, and save typed
+memory (decisions/facts, explicit supersede):
 ```mermaid
 flowchart LR
-  O[engine-orchestrator] --> M0[memory_recall]
-  M0 --> G[engine-grounder]
-  G --> B[engine-app-builder]
-  B --> Mo[engine-mobile]
-  Mo --> D[engine-deployer]
-  D --> M1[memory_save + app_update]
+  O[engine-orchestrator] --> S{scope}
+  S -->|trivial| B[engine-app-builder]
+  S -->|non-trivial| P[plan: task packets + contracts]
+  P --> G[memory_recall + search_repo per packet]
+  G --> X[suggest_experts → top 1-2 only if matched]
+  X --> B
+  B -->|real error| DBG[engine-debugger]
+  B --> V[deploy_verify: executed evidence]
+  V --> Mo[engine-mobile]
+  Mo --> M1["memory_save (kind, project, supersedes)"]
 ```
 
 ## 📓 Skills — 7 auto-triggered workflows
